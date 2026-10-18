@@ -1,16 +1,15 @@
 package com.aboezzat.videoplayer;
 
+import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.WindowManager;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
 import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
 
-public class PlayerActivity extends AppCompatActivity {
+public class PlayerActivity extends Activity {
     private ExoPlayer player;
     private PlayerView playerView;
 
@@ -18,11 +17,15 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        setContentView(R.layout.activity_player);
-
-        playerView = findViewById(R.id.player_view);
-
-        handleIntent(getIntent());
+        
+        try {
+            setContentView(R.layout.activity_player);
+            playerView = findViewById(R.id.player_view);
+            handleIntent(getIntent());
+        } catch (Exception e) {
+            e.printStackTrace();
+            finish();
+        }
     }
 
     @Override
@@ -52,12 +55,10 @@ public class PlayerActivity extends AppCompatActivity {
                 player = null;
             }
 
-            DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(this);
-            player = new ExoPlayer.Builder(this)
-                    .setMediaSourceFactory(mediaSourceFactory)
-                    .build();
-
-            playerView.setPlayer(player);
+            player = new ExoPlayer.Builder(this).build();
+            if (playerView != null) {
+                playerView.setPlayer(player);
+            }
 
             MediaItem mediaItem = MediaItem.fromUri(Uri.parse(url));
             player.setMediaItem(mediaItem);
