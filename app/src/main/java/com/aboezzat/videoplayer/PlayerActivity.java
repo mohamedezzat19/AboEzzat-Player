@@ -7,6 +7,7 @@ import android.view.WindowManager;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
 
 public class PlayerActivity extends AppCompatActivity {
@@ -17,9 +18,9 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        setContentView(R.layout.activity_player);
 
-        playerView = new PlayerView(this);
-        setContentView(playerView);
+        playerView = findViewById(R.id.player_view);
 
         handleIntent(getIntent());
     }
@@ -34,35 +35,44 @@ public class PlayerActivity extends AppCompatActivity {
     private void handleIntent(Intent intent) {
         if (intent == null) return;
 
-        String url = null;
-        if (intent.hasExtra("video_url")) {
-            url = intent.getStringExtra("video_url");
-        } else if (intent.getData() != null) {
+        String url = intent.getStringExtra("video_url");
+        if (url == null && intent.getData() != null) {
             url = intent.getData().toString();
         }
 
-        if (url != null && !url.isEmpty()) {
-            playVideo(url);
+        if (url != null && !url.trim().isEmpty()) {
+            playVideo(url.trim());
         }
     }
 
     private void playVideo(String url) {
-        if (player == null) {
-            player = new ExoPlayer.Builder(this).build();
+        try {
+            if (player != null) {
+                player.release();
+                player = null;
+            }
+
+            DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(this);
+            player = new ExoPlayer.Builder(this)
+                    .setMediaSourceFactory(mediaSourceFactory)
+                    .build();
+
             playerView.setPlayer(player);
+
+            MediaItem mediaItem = MediaItem.fromUri(Uri.parse(url));
+            player.setMediaItem(mediaItem);
+            player.prepare();
+            player.play();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-        MediaItem mediaItem = MediaItem.fromUri(Uri.parse(url));
-        player.setMediaItem(mediaItem);
-        player.prepare();
-        player.play();
     }
 
     @Override
     protected void onStop() {
         super.onStop();
         if (player != null) {
-            player.release();
-            player = null;
+            player.pause();
         }
     }
 
