@@ -4,7 +4,6 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
-import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -29,7 +28,7 @@ public class HttpServerService extends Service {
         createNotificationChannel();
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("AboEzzat Player Service")
-                .setContentText("Listening for video stream requests on port " + PORT)
+                .setContentText("Listening on port " + PORT)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .build();
         startForeground(1, notification);
@@ -70,32 +69,51 @@ public class HttpServerService extends Service {
             try {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 String line = reader.readLine();
-                if (line != null && line.startsWith("GET")) {
+                
+                String targetVideoUrl = null;
+
+                if (line != null && (line.startsWith("GET") || line.startsWith("POST"))) {
                     String[] parts = line.split(" ");
                     if (parts.length > 1) {
-                        String path = parts[1];
-                        if (path.contains("url=")) {
-                            String encodedUrl = path.substring(path.indexOf("url=") + 4);
-                            if (encodedUrl.contains("&")) {
-                                encodedUrl = encodedUrl.substring(0, encodedUrl.indexOf("&"));
-                            }
-                            String videoUrl = URLDecoder.decode(encodedUrl, "UTF-8");
+                        String fullPath = parts[1];
 
-                            // إرسال الرابط كنص و كـ Uri مع إجبار الشاشة تفتح فوراً
-                            Intent intent = new Intent(HttpServerService.this, PlayerActivity.class);
-                            intent.setData(Uri.parse(videoUrl));
-                            intent.putExtra("video_url", videoUrl);
-                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                            startActivity(intent);
+                        if (fullPath.contains("url=")) {
+                            String raw = fullPath.substring(fullPath.indexOf("url=") + 4);
+                            if (raw.contains("&")) {
+                                raw = raw.substring(0, raw.indexOf("&"));
+                            }
+                            targetVideoUrl = URLDecoder.decode(raw, "UTF-8");
+                        } else if (fullPath.contains("http://") || fullPath.contains("https://")) {
+                            int httpIndex = fullPath.indexOf("http://");
+                            if (httpIndex == -1) httpIndex = fullPath.indexOf("https://");
+                            targetVideoUrl = URLDecoder.decode(fullPath.substring(httpIndex), "UTF-8");
                         }
                     }
                 }
 
-                String response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK";
+                // رد فوري للمتصفح لمنع خطأ Not Found أو Timeout
+                String responseBody = "OK";
+                String httpResponse = "HTTP/1.1 200 OK\r\n" +
+                        "Content-Type: text/plain; charset=UTF-8\r\n" +
+                        "Content-Length: " + responseBody.getBytes().length + "\r\n" +
+                        "Access-Control-Allow-Origin: *\r\n" +
+                        "Connection: close\r\n\r\n" +
+                        responseBody;
+
                 OutputStream out = socket.getOutputStream();
-                out.write(response.getBytes());
+                out.write(httpResponse.getBytes("UTF-8"));
                 out.flush();
                 socket.close();
+
+                // تشغيل شاشة المشغل مباشرة إذا تم العثور على الرابط
+                if (targetVideoUrl != null && !targetVideoUrl.trim().isEmpty()) {
+                    Intent intent = new Intent(HttpServerService.this, PlayerActivity.class);
+                    intent.setData(Uri.parse(targetVideoUrl.trim()));
+                    intent.putExtra("video_url", targetVideoUrl.trim());
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                    startActivity(intent);
+                }
+
             } catch (Exception e) {
                 e.printStackTrace();
             }
