@@ -81,11 +81,12 @@ public class HttpServerService extends Service {
                             }
                             String videoUrl = URLDecoder.decode(encodedUrl, "UTF-8");
 
-                            // إجبار النظام على فتح الشاشة فورا بأعلى أولوية
-                            Intent intent = new Intent(getApplicationContext(), PlayerActivity.class);
+                            // إرسال الرابط كنص و كـ Uri مع إجبار الشاشة تفتح فوراً
+                            Intent intent = new Intent(HttpServerService.this, PlayerActivity.class);
                             intent.setData(Uri.parse(videoUrl));
-                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-                            getApplicationContext().startActivity(intent);
+                            intent.putExtra("video_url", videoUrl);
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                            startActivity(intent);
                         }
                     }
                 }
