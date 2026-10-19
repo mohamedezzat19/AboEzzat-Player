@@ -1,11 +1,9 @@
 package com.aboezzat.videoplayer;
 
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.view.View;
 import android.view.WindowManager;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
@@ -13,35 +11,20 @@ import androidx.media3.common.MediaItem;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 
-import org.schabi.newpipe.extractor.NewPipe;
-import org.schabi.newpipe.extractor.ServiceList;
-import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeStreamExtractor;
-import org.schabi.newpipe.extractor.stream.StreamInfo;
-import org.schabi.newpipe.extractor.stream.VideoStream;
-
-import java.util.List;
-
 public class MainActivity extends AppCompatActivity {
 
     private PlayerView playerView;
     private ExoPlayer player;
-    private static boolean isExtractorInitialized = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
-        // إبقاء الشاشة مضاءة دائماً أثناء التشغيل
+
+        // إبقاء الشاشة مضاءة دائماً أثناء المشاهدة
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         setContentView(R.layout.activity_main);
         playerView = findViewById(R.id.player_view);
-
-        // تهيئة محرك الاستخراج مرة واحدة فقط
-        if (!isExtractorInitialized) {
-            NewPipe.init(org.schabi.newpipe.extractor.downloader.DownloaderTestImpl.getInstance());
-            isExtractorInitialized = true;
-        }
 
         initializePlayer();
         handleIntent(getIntent());
@@ -51,8 +34,6 @@ public class MainActivity extends AppCompatActivity {
         if (player == null) {
             player = new ExoPlayer.Builder(this).build();
             playerView.setPlayer(player);
-            playerView.setShowNextButton(false);
-            playerView.setShowPreviousButton(false);
         }
     }
 
@@ -65,64 +46,55 @@ public class MainActivity extends AppCompatActivity {
 
     private void handleIntent(Intent intent) {
         if (intent != null && intent.hasExtra("video_url")) {
-            String rawUrl = intent.getStringExtra("video_url");
-            if (rawUrl != null && !rawUrl.isEmpty()) {
-                resolveAndPlay(rawUrl);
+            String url = intent.getStringExtra("video_url");
+            if (url != null && !url.trim().isEmpty()) {
+                routeAndPlay(url.trim());
             }
         }
     }
 
-    private void resolveAndPlay(String url) {
-        // إذا كان الرابط مباشر أصلاً (مثل m3u8 أو mp4) نشغله فوراً بدون استخراج
-        if (isDirectStream(url)) {
-            playMedia(url);
-            return;
+    private void routeAndPlay(String url) {
+        // فحص إذا كان الرابط يوتيوب
+        if (url.contains("youtube.com") || url.contains("youtu.be")) {
+            if (tryLaunchSmartTube(url)) {
+                finish(); // إغلاق مشغلنا وترك الشاشة لسمارت تيوب
+                return;
+            }
         }
 
-        // لو الرابط من صفحات يوتيوب ومواقع الفيديو، نشغل الاستخراج في الخلفية
-        Toast.makeText(this, "جاري استخراج رابط الفيديو...", Toast.LENGTH_SHORT).show();
+        // تشغيل مباشر لأي رابط فيديو آخر داخل مشغل أبو عزت
+        playMedia(url);
+    }
 
-        new Thread(() -> {
+    private boolean tryLaunchSmartTube(String url) {
+        // حزم سمارت تيوب الرسمية على الفاير ستيك والأندرويد تي في
+        String[] smartTubePackages = {
+            "com.teamsmart.videomanager.tv",
+            "com.liskovsoft.videomanager",
+            "com.liskovsoft.smarttubetv.beta"
+        };
+
+        PackageManager pm = getPackageManager();
+        for (String pkg : smartTubePackages) {
             try {
-                String streamUrl = null;
-
-                if (url.contains("youtube.com") || url.contains("youtu.be")) {
-                    YoutubeStreamExtractor extractor = (YoutubeStreamExtractor) ServiceList.YouTube.getStreamExtractor(url);
-                    extractor.fetchPage();
-                    
-                    // استخراج الفيديو المباشر بأعلى جودة متوفرة بصوت مدمج
-                    List<VideoStream> videoStreams = extractor.getVideoStreams();
-                    if (!videoStreams.isEmpty()) {
-                        streamUrl = videoStreams.get(0).getContent();
-                    } else if (extractor.getHlsUrl() != null) {
-                        streamUrl = extractor.getHlsUrl();
-                    }
-                }
-
-                String finalUrl = streamUrl != null ? streamUrl : url;
-
-                new Handler(Looper.getMainLooper()).post(() -> playMedia(finalUrl));
-
-            } catch (Exception e) {
-                e.printStackTrace();
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    Toast.makeText(this, "تعذر استخراج الرابط، جاري تجربة المشغل المباشر", Toast.LENGTH_SHORT).show();
-                    playMedia(url);
-                });
+                pm.getPackageInfo(pkg, 0);
+                Intent launchIntent = new Intent(Intent.ACTION_VIEW);
+                launchIntent.setData(Uri.parse(url));
+                launchIntent.setPackage(pkg);
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(launchIntent);
+                return true;
+            } catch (Exception ignored) {
             }
-        }).start();
+        }
+        return false;
     }
 
-    private boolean isDirectStream(String url) {
-        String clean = url.toLowerCase();
-        return clean.contains(".m3u8") || clean.contains(".mp4") || clean.contains(".mkv") || clean.contains(".ts");
-    }
-
-    private void playMedia(String finalUrl) {
+    private void playMedia(String url) {
         if (player == null) {
             initializePlayer();
         }
-        MediaItem mediaItem = MediaItem.fromUri(Uri.parse(finalUrl));
+        MediaItem mediaItem = MediaItem.fromUri(Uri.parse(url));
         player.setMediaItem(mediaItem);
         player.prepare();
         player.play();
