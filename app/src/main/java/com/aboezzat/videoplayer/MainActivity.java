@@ -1,170 +1,143 @@
 package com.aboezzat.videoplayer;
 
-import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
-import android.graphics.Color;
-import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
+import android.content.IntentFilter;
+import android.net.Uri;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
-import android.view.Gravity;
+import android.text.format.Formatter;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.media3.common.MediaItem;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.ui.PlayerView;
 
-import java.net.InetAddress;
-import java.net.NetworkInterface;
-import java.util.Collections;
-import java.util.List;
+public class MainActivity extends AppCompatActivity {
+    private TextView tvStatus;
+    private Button btnRestart;
+    private LinearLayout layoutInfo;
+    private PlayerView playerView;
+    private ExoPlayer player;
 
-public class MainActivity extends Activity {
-
-    private TextView tvIp;
+    private final BroadcastReceiver videoReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if ("com.aboezzat.videoplayer.PLAY_VIDEO".equals(intent.getAction())) {
+                String url = intent.getStringExtra("video_url");
+                if (url != null && !url.isEmpty()) {
+                    playVideo(url);
+                }
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        setContentView(R.layout.activity_main);
 
-        LinearLayout rootLayout = new LinearLayout(this);
-        rootLayout.setOrientation(LinearLayout.VERTICAL);
-        rootLayout.setGravity(Gravity.CENTER_HORIZONTAL);
-        rootLayout.setPadding(40, 30, 40, 30);
+        tvStatus = findViewById(R.id.tv_status);
+        btnRestart = findViewById(R.id.btn_restart);
+        layoutInfo = findViewById(R.id.layout_info);
+        playerView = findViewById(R.id.main_player_view);
 
-        GradientDrawable bg = new GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0xFF0F2027, 0xFF203A43, 0xFF2C5364}
-        );
-        rootLayout.setBackground(bg);
-
-        // 1. أعلى الشاشة في المنتصف
-        TextView tvWelcome = new TextView(this);
-        tvWelcome.setText("أهلاً بك يا أبو عزت");
-        tvWelcome.setTextSize(36);
-        tvWelcome.setTextColor(0xFF00E676);
-        tvWelcome.setTypeface(null, Typeface.BOLD);
-        tvWelcome.setGravity(Gravity.CENTER);
-        tvWelcome.setPadding(0, 10, 0, 20);
-        rootLayout.addView(tvWelcome);
-
-        // بطاقة الآي بي والمنفذ
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setGravity(Gravity.CENTER);
-        card.setPadding(30, 20, 30, 20);
-
-        GradientDrawable cardBg = new GradientDrawable();
-        cardBg.setColor(0x33FFFFFF);
-        cardBg.setCornerRadius(18);
-        card.setBackground(cardBg);
-
-        tvIp = new TextView(this);
-        tvIp.setText("عنوان الآي بي: " + getLocalIpAddress() + "   |   المنفذ: 8080");
-        tvIp.setTextSize(22);
-        tvIp.setTextColor(Color.WHITE);
-        tvIp.setGravity(Gravity.CENTER);
-        card.addView(tvIp);
-
-        TextView tvStatus = new TextView(this);
-        tvStatus.setText("المشغل المدمج جاهز لتشغيل الفيديوهات مباشرة بملء الشاشة");
-        tvStatus.setTextSize(18);
-        tvStatus.setTextColor(0xFFB0BEC5);
-        tvStatus.setGravity(Gravity.CENTER);
-        tvStatus.setPadding(0, 10, 0, 0);
-        card.addView(tvStatus);
-
-        rootLayout.addView(card);
-
-        // زر إعادة تشغيل الخادم
-        Button btnRestart = new Button(this);
-        btnRestart.setText("إعادة تشغيل الخادم");
-        btnRestart.setTextSize(18);
-        btnRestart.setTextColor(Color.WHITE);
-
-        GradientDrawable btnBg = new GradientDrawable();
-        btnBg.setColor(0xFF1976D2);
-        btnBg.setCornerRadius(12);
-        btnRestart.setBackground(btnBg);
-        btnRestart.setPadding(35, 12, 35, 12);
-
-        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        btnParams.setMargins(0, 20, 0, 0);
-        btnRestart.setLayoutParams(btnParams);
-        btnRestart.setFocusable(true);
+        updateIpAddress();
 
         btnRestart.setOnClickListener(v -> {
-            restartBackgroundService();
-            tvIp.setText("عنوان الآي بي: " + getLocalIpAddress() + "   |   المنفذ: 8080");
-            Toast.makeText(MainActivity.this, "تمت إعادة تشغيل الخادم بنجاح", Toast.LENGTH_SHORT).show();
+            stopServerService();
+            startServerService();
+            updateIpAddress();
         });
-        rootLayout.addView(btnRestart);
 
-        // مسافة لدفع الذكر لأسفل الشاشة
-        View spacer = new View(this);
-        LinearLayout.LayoutParams spacerParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.0f);
-        spacer.setLayoutParams(spacerParams);
-        rootLayout.addView(spacer);
+        startServerService();
 
-        // 2. أسفل الشاشة
-        TextView tvZikr = new TextView(this);
-        tvZikr.setText("سُبْحَانَ اللَّهِ وَبِحَمْدِهِ ، سُبْحَانَ اللَّهِ الْعَظِيمِ");
-        tvZikr.setTextSize(38);
-        tvZikr.setTextColor(0xFFFFD54F);
-        tvZikr.setTypeface(null, Typeface.BOLD);
-        tvZikr.setGravity(Gravity.CENTER);
-        tvZikr.setPadding(0, 10, 0, 20);
-
-        LinearLayout.LayoutParams zikrParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        tvZikr.setLayoutParams(zikrParams);
-        rootLayout.addView(tvZikr);
-
-        setContentView(rootLayout);
-
-        startBackgroundService();
+        IntentFilter filter = new IntentFilter("com.aboezzat.videoplayer.PLAY_VIDEO");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(videoReceiver, filter, Context.RECEIVER_EXPORTED);
+        } else {
+            registerReceiver(videoReceiver, filter);
+        }
     }
 
-    private void startBackgroundService() {
+    private void updateIpAddress() {
         try {
-            Intent serviceIntent = new Intent(this, HttpServerService.class);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent);
-            } else {
-                startService(serviceIntent);
-            }
-        } catch (Exception ignored) {}
+            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+            String ip = Formatter.formatIpAddress(wm.getConnectionInfo().getIpAddress());
+            tvStatus.setText("عنوان الآي بي: " + ip + " | المنفذ: 8080");
+        } catch (Exception e) {
+            tvStatus.setText("المنفذ: 8080");
+        }
     }
 
-    private void restartBackgroundService() {
-        try {
-            Intent serviceIntent = new Intent(this, HttpServerService.class);
-            stopService(serviceIntent);
-            startBackgroundService();
-        } catch (Exception ignored) {}
-    }
+    private void playVideo(String url) {
+        runOnUiThread(() -> {
+            try {
+                layoutInfo.setVisibility(View.GONE);
+                playerView.setVisibility(View.VISIBLE);
 
-    private String getLocalIpAddress() {
-        try {
-            List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
-            for (NetworkInterface intf : interfaces) {
-                List<InetAddress> addrs = Collections.list(intf.getInetAddresses());
-                for (InetAddress addr : addrs) {
-                    if (!addr.isLoopbackAddress()) {
-                        String sAddr = addr.getHostAddress();
-                        if (sAddr != null && sAddr.indexOf(':') < 0) {
-                            return sAddr;
-                        }
-                    }
+                if (player != null) {
+                    player.release();
                 }
+
+                player = new ExoPlayer.Builder(MainActivity.this).build();
+                playerView.setPlayer(player);
+
+                MediaItem mediaItem = MediaItem.fromUri(Uri.parse(url));
+                player.setMediaItem(mediaItem);
+                player.prepare();
+                player.play();
+            } catch (Exception e) {
+                e.printStackTrace();
             }
+        });
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (playerView.getVisibility() == View.VISIBLE) {
+            if (player != null) {
+                player.stop();
+                player.release();
+                player = null;
+            }
+            playerView.setVisibility(View.GONE);
+            layoutInfo.setVisibility(View.VISIBLE);
+        } else {
+            super.onBackPressed();
+        }
+    }
+
+    private void startServerService() {
+        Intent intent = new Intent(this, HttpServerService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent);
+        } else {
+            startService(intent);
+        }
+    }
+
+    private void stopServerService() {
+        Intent intent = new Intent(this, HttpServerService.class);
+        stopService(intent);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        try {
+            unregisterReceiver(videoReceiver);
         } catch (Exception ignored) {}
-        return "غير متصل بالواي فاي";
+        if (player != null) {
+            player.release();
+            player = null;
+        }
     }
 }
