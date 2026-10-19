@@ -16,6 +16,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -53,7 +54,7 @@ public class ReceiverService extends Service {
     private Notification buildNotification() {
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("AboEzzat Player")
-                .setContentText("السيرفر نشط ومستعد لفك وتشغيل الروابط")
+                .setContentText("السيرفر نشط وجاهز لاستقبال وفك الفيديوهات")
                 .setSmallIcon(R.drawable.app_icon)
                 .setOngoing(true)
                 .build();
@@ -104,60 +105,82 @@ public class ReceiverService extends Service {
             if (rawUrl != null && !rawUrl.trim().isEmpty()) {
                 String targetUrl = rawUrl.trim();
 
-                // معالجة الرابط في الخلفية لفك التشفير إذا كان من منصات التواصل
                 executor.execute(() -> {
                     String finalPlayUrl = resolveMediaUrl(targetUrl);
                     launchPlayer(finalPlayUrl);
                 });
 
-                return newFixedLengthResponse("OK: Processing and playing on TV");
+                return newFixedLengthResponse("OK: Extracting and playing on TV");
             }
 
-            return newFixedLengthResponse("AboEzzat TV Background Server is Ready");
+            return newFixedLengthResponse("AboEzzat TV Receiver is Online");
         }
     }
 
     private String resolveMediaUrl(String originalUrl) {
-        // لو رابط يوتيوب أو رابط ملف مباشر، سيبه زي ما هو
-        if (originalUrl.contains("youtube.com") || originalUrl.contains("youtu.be") 
+        // روابط يوتيوب أو الروابط المباشرة الخام
+        if (originalUrl.contains("youtube.com") || originalUrl.contains("youtu.be")
                 || originalUrl.endsWith(".mp4") || originalUrl.endsWith(".m3u8") || originalUrl.endsWith(".mkv")) {
             return originalUrl;
         }
 
-        // استخراج الرابط المباشر لمنصات التواصل (TikTok, Instagram, Facebook, Twitter, etc.)
-        try {
-            URL apiUrl = new URL("https://api.cobalt.tools/api/json");
-            HttpURLConnection conn = (HttpURLConnection) apiUrl.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("Accept", "application/json");
-            conn.setDoOutput(true);
-            conn.setConnectTimeout(8000);
-            conn.setReadTimeout(8000);
+        // 1. استخراج فيديو تيك توك المباشر عبر محرك TikWM بدون علامة مائية
+        if (originalUrl.contains("tiktok.com")) {
+            try {
+                String endpoint = "https://www.tikwm.com/api/?url=" + URLEncoder.encode(originalUrl, "UTF-8");
+                URL url = new URL(endpoint);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+                conn.setConnectTimeout(6000);
+                conn.setReadTimeout(6000);
 
-            JSONObject jsonInput = new JSONObject();
-            jsonInput.put("url", originalUrl);
+                if (conn.getResponseCode() == 200) {
+                    BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = br.readLine()) != null) sb.append(line);
 
-            try (OutputStream os = conn.getOutputStream()) {
-                byte[] input = jsonInput.toString().getBytes("utf-8");
-                os.write(input, 0, input.length);
+                    JSONObject json = new JSONObject(sb.toString());
+                    if (json.optInt("code") == 0 && json.has("data")) {
+                        JSONObject data = json.getJSONObject("data");
+                        String playUrl = data.optString("play");
+                        if (playUrl != null && !playUrl.isEmpty()) {
+                            if (!playUrl.startsWith("http")) {
+                                playUrl = "https://www.tikwm.com" + playUrl;
+                            }
+                            return playUrl;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
             }
+        }
+
+        // 2. محرك عام لمنصات التواصل (Instagram, Facebook, Twitter)
+        try {
+            URL url = new URL("https://api.vkrdown.com/api/get?url=" + URLEncoder.encode(originalUrl, "UTF-8"));
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+            conn.setConnectTimeout(6000);
+            conn.setReadTimeout(6000);
 
             if (conn.getResponseCode() == 200) {
-                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"));
-                StringBuilder response = new StringBuilder();
-                String responseLine;
-                while ((responseLine = br.readLine()) != null) {
-                    response.append(responseLine.trim());
-                }
+                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
 
-                JSONObject jsonResponse = new JSONObject(response.toString());
-                if (jsonResponse.has("url")) {
-                    return jsonResponse.getString("url");
+                JSONObject res = new JSONObject(sb.toString());
+                if (res.has("data")) {
+                    JSONObject data = res.getJSONObject("data");
+                    if (data.has("url")) {
+                        return data.getString("url");
+                    }
                 }
             }
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (Exception ignored) {
         }
 
         return originalUrl;
