@@ -25,14 +25,15 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout layoutInfo;
     private PlayerView playerView;
     private ExoPlayer player;
+    private String currentVideoUrl = null;
 
     private final BroadcastReceiver videoReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             if ("com.aboezzat.videoplayer.PLAY_VIDEO".equals(intent.getAction())) {
                 String url = intent.getStringExtra("video_url");
-                if (url != null && !url.isEmpty()) {
-                    playVideo(url);
+                if (url != null && !url.trim().isEmpty()) {
+                    playVideo(url.trim());
                 }
             }
         }
@@ -41,7 +42,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         setContentView(R.layout.activity_main);
 
         tvStatus = findViewById(R.id.tv_status);
@@ -66,7 +69,6 @@ public class MainActivity extends AppCompatActivity {
             registerReceiver(videoReceiver, filter);
         }
 
-        // لو التطبيق تم فتحه مباشرة من أمر تشغيل فيديو خارجي
         handleIncomingIntent(getIntent());
     }
 
@@ -97,14 +99,21 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void playVideo(String url) {
+        currentVideoUrl = url;
         runOnUiThread(() -> {
             try {
+                // إيقاف أي مشغل قديم تماماً لمنع تشغيل فيديوهات فوق بعض
+                if (player != null) {
+                    player.stop();
+                    player.clearMediaItems();
+                    player.release();
+                    player = null;
+                }
+
+                // إخفاء الواجهة الزرقاء وإظهار المشغل فوراً
                 layoutInfo.setVisibility(View.GONE);
                 playerView.setVisibility(View.VISIBLE);
-
-                if (player != null) {
-                    player.release();
-                }
+                playerView.requestFocus();
 
                 player = new ExoPlayer.Builder(MainActivity.this).build();
                 playerView.setPlayer(player);
@@ -120,10 +129,21 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        // لو في فيديو شغال حالياً، تأكد إن المشغل ظاهر ومختفيش وراء الواجهة الزرقاء
+        if (player != null && player.isPlaying()) {
+            layoutInfo.setVisibility(View.GONE);
+            playerView.setVisibility(View.VISIBLE);
+        }
+    }
+
+    @Override
     public void onBackPressed() {
-        if (playerView.getVisibility() == View.VISIBLE) {
+        if (playerView != null && playerView.getVisibility() == View.VISIBLE) {
             if (player != null) {
                 player.stop();
+                player.clearMediaItems();
                 player.release();
                 player = null;
             }
