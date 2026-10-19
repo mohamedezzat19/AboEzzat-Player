@@ -1,11 +1,9 @@
 package com.aboezzat.videoplayer;
 
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.WindowManager;
-import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -20,9 +18,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // إبقاء الشاشة مضاءة دائماً أثناء المشاهدة
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
         setContentView(R.layout.activity_main);
         playerView = findViewById(R.id.player_view);
 
@@ -48,49 +44,25 @@ public class MainActivity extends AppCompatActivity {
         if (intent != null && intent.hasExtra("video_url")) {
             String url = intent.getStringExtra("video_url");
             if (url != null && !url.trim().isEmpty()) {
-                routeAndPlay(url.trim());
+                playMedia(url.trim());
             }
         }
-    }
-
-    private void routeAndPlay(String url) {
-        // فحص إذا كان الرابط يوتيوب
-        if (url.contains("youtube.com") || url.contains("youtu.be")) {
-            if (tryLaunchSmartTube(url)) {
-                finish(); // إغلاق مشغلنا وترك الشاشة لسمارت تيوب
-                return;
-            }
-        }
-
-        // تشغيل مباشر لأي رابط فيديو آخر داخل مشغل أبو عزت
-        playMedia(url);
-    }
-
-    private boolean tryLaunchSmartTube(String url) {
-        // حزم سمارت تيوب الرسمية على الفاير ستيك والأندرويد تي في
-        String[] smartTubePackages = {
-            "com.teamsmart.videomanager.tv",
-            "com.liskovsoft.videomanager",
-            "com.liskovsoft.smarttubetv.beta"
-        };
-
-        PackageManager pm = getPackageManager();
-        for (String pkg : smartTubePackages) {
-            try {
-                pm.getPackageInfo(pkg, 0);
-                Intent launchIntent = new Intent(Intent.ACTION_VIEW);
-                launchIntent.setData(Uri.parse(url));
-                launchIntent.setPackage(pkg);
-                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(launchIntent);
-                return true;
-            } catch (Exception ignored) {
-            }
-        }
-        return false;
     }
 
     private void playMedia(String url) {
+        // لو الرابط يوتيوب، افتحه فوراً بتطبيق خارجي (زي SmartTube أو المتصفح) مباشرة بأبسط أمر أندرويد قياسي
+        if (url.contains("youtube.com") || url.contains("youtu.be")) {
+            try {
+                Intent youtubeIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                youtubeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(youtubeIntent);
+                finish();
+                return;
+            } catch (Exception ignored) {
+            }
+        }
+
+        // تشغيل مباشر لأي رابط فيديو آخر داخل مشغلنا
         if (player == null) {
             initializePlayer();
         }
