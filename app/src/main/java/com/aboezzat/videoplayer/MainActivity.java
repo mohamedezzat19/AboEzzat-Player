@@ -1,179 +1,144 @@
 package com.aboezzat.videoplayer;
 
-import android.content.BroadcastReceiver;
-import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.net.Uri;
-import android.net.wifi.WifiManager;
-import android.os.Build;
 import android.os.Bundle;
-import android.text.format.Formatter;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.Button;
-import android.widget.LinearLayout;
-import android.widget.TextView;
+import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 
+import org.schabi.newpipe.extractor.NewPipe;
+import org.schabi.newpipe.extractor.ServiceList;
+import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeStreamExtractor;
+import org.schabi.newpipe.extractor.stream.StreamInfo;
+import org.schabi.newpipe.extractor.stream.VideoStream;
+
+import java.util.List;
+
 public class MainActivity extends AppCompatActivity {
-    private TextView tvStatus;
-    private Button btnRestart;
-    private LinearLayout layoutInfo;
+
     private PlayerView playerView;
     private ExoPlayer player;
-    private String currentVideoUrl = null;
-
-    private final BroadcastReceiver videoReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if ("com.aboezzat.videoplayer.PLAY_VIDEO".equals(intent.getAction())) {
-                String url = intent.getStringExtra("video_url");
-                if (url != null && !url.trim().isEmpty()) {
-                    playVideo(url.trim());
-                }
-            }
-        }
-    };
+    private static boolean isExtractorInitialized = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+        
+        // إبقاء الشاشة مضاءة دائماً أثناء التشغيل
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
         setContentView(R.layout.activity_main);
+        playerView = findViewById(R.id.player_view);
 
-        tvStatus = findViewById(R.id.tv_status);
-        btnRestart = findViewById(R.id.btn_restart);
-        layoutInfo = findViewById(R.id.layout_info);
-        playerView = findViewById(R.id.main_player_view);
-
-        updateIpAddress();
-
-        btnRestart.setOnClickListener(v -> {
-            stopServerService();
-            startServerService();
-            updateIpAddress();
-        });
-
-        startServerService();
-
-        IntentFilter filter = new IntentFilter("com.aboezzat.videoplayer.PLAY_VIDEO");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(videoReceiver, filter, Context.RECEIVER_EXPORTED);
-        } else {
-            registerReceiver(videoReceiver, filter);
+        // تهيئة محرك الاستخراج مرة واحدة فقط
+        if (!isExtractorInitialized) {
+            NewPipe.init(org.schabi.newpipe.extractor.downloader.DownloaderTestImpl.getInstance());
+            isExtractorInitialized = true;
         }
 
-        handleIncomingIntent(getIntent());
+        initializePlayer();
+        handleIntent(getIntent());
+    }
+
+    private void initializePlayer() {
+        if (player == null) {
+            player = new ExoPlayer.Builder(this).build();
+            playerView.setPlayer(player);
+            playerView.setShowNextButton(false);
+            playerView.setShowPreviousButton(false);
+        }
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        handleIncomingIntent(intent);
+        handleIntent(intent);
     }
 
-    private void handleIncomingIntent(Intent intent) {
+    private void handleIntent(Intent intent) {
         if (intent != null && intent.hasExtra("video_url")) {
-            String url = intent.getStringExtra("video_url");
-            if (url != null && !url.trim().isEmpty()) {
-                playVideo(url.trim());
+            String rawUrl = intent.getStringExtra("video_url");
+            if (rawUrl != null && !rawUrl.isEmpty()) {
+                resolveAndPlay(rawUrl);
             }
         }
     }
 
-    private void updateIpAddress() {
-        try {
-            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
-            String ip = Formatter.formatIpAddress(wm.getConnectionInfo().getIpAddress());
-            tvStatus.setText("عنوان الآي بي: " + ip + " | المنفذ: 8080");
-        } catch (Exception e) {
-            tvStatus.setText("المنفذ: 8080");
+    private void resolveAndPlay(String url) {
+        // إذا كان الرابط مباشر أصلاً (مثل m3u8 أو mp4) نشغله فوراً بدون استخراج
+        if (isDirectStream(url)) {
+            playMedia(url);
+            return;
         }
-    }
 
-    private void playVideo(String url) {
-        currentVideoUrl = url;
-        runOnUiThread(() -> {
+        // لو الرابط من صفحات يوتيوب ومواقع الفيديو، نشغل الاستخراج في الخلفية
+        Toast.makeText(this, "جاري استخراج رابط الفيديو...", Toast.LENGTH_SHORT).show();
+
+        new Thread(() -> {
             try {
-                // إيقاف أي مشغل قديم تماماً لمنع تشغيل فيديوهات فوق بعض
-                if (player != null) {
-                    player.stop();
-                    player.clearMediaItems();
-                    player.release();
-                    player = null;
+                String streamUrl = null;
+
+                if (url.contains("youtube.com") || url.contains("youtu.be")) {
+                    YoutubeStreamExtractor extractor = (YoutubeStreamExtractor) ServiceList.YouTube.getStreamExtractor(url);
+                    extractor.fetchPage();
+                    
+                    // استخراج الفيديو المباشر بأعلى جودة متوفرة بصوت مدمج
+                    List<VideoStream> videoStreams = extractor.getVideoStreams();
+                    if (!videoStreams.isEmpty()) {
+                        streamUrl = videoStreams.get(0).getContent();
+                    } else if (extractor.getHlsUrl() != null) {
+                        streamUrl = extractor.getHlsUrl();
+                    }
                 }
 
-                // إخفاء الواجهة الزرقاء وإظهار المشغل فوراً
-                layoutInfo.setVisibility(View.GONE);
-                playerView.setVisibility(View.VISIBLE);
-                playerView.requestFocus();
+                String finalUrl = streamUrl != null ? streamUrl : url;
 
-                player = new ExoPlayer.Builder(MainActivity.this).build();
-                playerView.setPlayer(player);
+                new Handler(Looper.getMainLooper()).post(() -> playMedia(finalUrl));
 
-                MediaItem mediaItem = MediaItem.fromUri(Uri.parse(url));
-                player.setMediaItem(mediaItem);
-                player.prepare();
-                player.play();
             } catch (Exception e) {
                 e.printStackTrace();
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    Toast.makeText(this, "تعذر استخراج الرابط، جاري تجربة المشغل المباشر", Toast.LENGTH_SHORT).show();
+                    playMedia(url);
+                });
             }
-        });
+        }).start();
+    }
+
+    private boolean isDirectStream(String url) {
+        String clean = url.toLowerCase();
+        return clean.contains(".m3u8") || clean.contains(".mp4") || clean.contains(".mkv") || clean.contains(".ts");
+    }
+
+    private void playMedia(String finalUrl) {
+        if (player == null) {
+            initializePlayer();
+        }
+        MediaItem mediaItem = MediaItem.fromUri(Uri.parse(finalUrl));
+        player.setMediaItem(mediaItem);
+        player.prepare();
+        player.play();
     }
 
     @Override
-    protected void onResume() {
-        super.onResume();
-        // لو في فيديو شغال حالياً، تأكد إن المشغل ظاهر ومختفيش وراء الواجهة الزرقاء
-        if (player != null && player.isPlaying()) {
-            layoutInfo.setVisibility(View.GONE);
-            playerView.setVisibility(View.VISIBLE);
+    protected void onStop() {
+        super.onStop();
+        if (player != null) {
+            player.pause();
         }
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (playerView != null && playerView.getVisibility() == View.VISIBLE) {
-            if (player != null) {
-                player.stop();
-                player.clearMediaItems();
-                player.release();
-                player = null;
-            }
-            playerView.setVisibility(View.GONE);
-            layoutInfo.setVisibility(View.VISIBLE);
-        } else {
-            super.onBackPressed();
-        }
-    }
-
-    private void startServerService() {
-        Intent intent = new Intent(this, HttpServerService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent);
-        } else {
-            startService(intent);
-        }
-    }
-
-    private void stopServerService() {
-        Intent intent = new Intent(this, HttpServerService.class);
-        stopService(intent);
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        try {
-            unregisterReceiver(videoReceiver);
-        } catch (Exception ignored) {}
         if (player != null) {
             player.release();
             player = null;
