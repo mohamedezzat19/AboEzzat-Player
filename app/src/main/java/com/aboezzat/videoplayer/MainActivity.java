@@ -3,8 +3,9 @@ package com.aboezzat.videoplayer;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.View;
 import android.view.WindowManager;
-import android.widget.Toast;
+import android.widget.LinearLayout;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -14,6 +15,7 @@ public class MainActivity extends AppCompatActivity {
 
     private PlayerView playerView;
     private ExoPlayer player;
+    private LinearLayout welcomeLayout;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -22,12 +24,10 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         playerView = findViewById(R.id.player_view);
+        welcomeLayout = findViewById(R.id.welcome_layout);
+
         initPlayer();
-
-        // تشغيل سيرفر الاستقبال المحلي في الخلفية فور فتح التطبيق
         startReceiverService();
-
-        // معالجة أي رابط ممرر
         handleIntent(getIntent());
     }
 
@@ -64,7 +64,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void playMedia(String url) {
-        // لو الرابط يوتيوب يتم توجيهه إلى SmartTube
         if (url.contains("youtube.com") || url.contains("youtu.be")) {
             try {
                 Intent ytIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
@@ -75,15 +74,19 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // تشغيل أي فيديو آخر داخل ExoPlayer
         if (player == null) {
             initPlayer();
         }
+
+        // إخفاء شاشة الترحيب وإظهار الفيديو
+        if (welcomeLayout != null) {
+            welcomeLayout.setVisibility(View.GONE);
+        }
+
         MediaItem mediaItem = MediaItem.fromUri(Uri.parse(url));
         player.setMediaItem(mediaItem);
         player.prepare();
         player.play();
-        Toast.makeText(this, "جاري التشغيل...", Toast.LENGTH_SHORT).show();
     }
 
     @Override
