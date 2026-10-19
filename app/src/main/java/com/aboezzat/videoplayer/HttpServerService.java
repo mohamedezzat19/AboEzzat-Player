@@ -7,7 +7,9 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import androidx.core.app.NotificationCompat;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -30,7 +32,7 @@ public class HttpServerService extends Service {
                 .setContentTitle("AboEzzat Player")
                 .setContentText("الخادم جاهز لاستقبال الفيديوهات على منفذ " + PORT)
                 .setSmallIcon(android.R.drawable.ic_media_play)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build();
         startForeground(1, notification);
         startServer();
@@ -43,7 +45,6 @@ public class HttpServerService extends Service {
                     "AboEzzat Server",
                     NotificationManager.IMPORTANCE_HIGH
             );
-            channel.enableVibration(false);
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
                 manager.createNotificationChannel(channel);
@@ -91,7 +92,7 @@ public class HttpServerService extends Service {
                     }
                 }
 
-                String responseBody = "Video Sent Successfully!";
+                String responseBody = "OK";
                 String httpResponse = "HTTP/1.1 200 OK\r\n" +
                         "Content-Type: text/plain; charset=UTF-8\r\n" +
                         "Content-Length: " + responseBody.getBytes("UTF-8").length + "\r\n" +
@@ -105,44 +106,22 @@ public class HttpServerService extends Service {
                 socket.close();
 
                 if (videoUrl != null && !videoUrl.trim().isEmpty()) {
-                    Intent openIntent = new Intent(HttpServerService.this, MainActivity.class);
-                    openIntent.putExtra("video_url", videoUrl.trim());
-                    openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK |
-                            Intent.FLAG_ACTIVITY_SINGLE_TOP |
-                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                    final String finalUrl = videoUrl.trim();
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        try {
+                            Intent launchIntent = new Intent(HttpServerService.this, MainActivity.class);
+                            launchIntent.putExtra("video_url", finalUrl);
+                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | 
+                                                  Intent.FLAG_ACTIVITY_CLEAR_TOP | 
+                                                  Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                            startActivity(launchIntent);
+                        } catch (Exception ignored) {}
 
-                    PendingIntent pendingIntent = PendingIntent.getActivity(
-                            HttpServerService.this,
-                            0,
-                            openIntent,
-                            PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
-                    );
-
-                    // تحديث الإشعار لفرض فتح الواجهة فوراً بـ Fullscreen Intent
-                    Notification highPriorityNotification = new NotificationCompat.Builder(HttpServerService.this, CHANNEL_ID)
-                            .setContentTitle("AboEzzat Player")
-                            .setContentText("تشغيل الفيديو الآن...")
-                            .setSmallIcon(android.R.drawable.ic_media_play)
-                            .setPriority(NotificationCompat.PRIORITY_MAX)
-                            .setCategory(NotificationCompat.CATEGORY_ALARM)
-                            .setFullScreenIntent(pendingIntent, true)
-                            .setContentIntent(pendingIntent)
-                            .setAutoCancel(true)
-                            .build();
-
-                    NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-                    if (manager != null) {
-                        manager.notify(1, highPriorityNotification);
-                    }
-
-                    try {
-                        startActivity(openIntent);
-                    } catch (Exception ignored) {}
-
-                    Intent broadcastIntent = new Intent("com.aboezzat.videoplayer.PLAY_VIDEO");
-                    broadcastIntent.setPackage(getPackageName());
-                    broadcastIntent.putExtra("video_url", videoUrl.trim());
-                    sendBroadcast(broadcastIntent);
+                        Intent broadcastIntent = new Intent("com.aboezzat.videoplayer.PLAY_VIDEO");
+                        broadcastIntent.setPackage(getPackageName());
+                        broadcastIntent.putExtra("video_url", finalUrl);
+                        sendBroadcast(broadcastIntent);
+                    });
                 }
 
             } catch (Exception e) {
