@@ -65,6 +65,25 @@ public class MainActivity extends AppCompatActivity {
         } else {
             registerReceiver(videoReceiver, filter);
         }
+
+        // لو التطبيق تم فتحه مباشرة من أمر تشغيل فيديو خارجي
+        handleIncomingIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIncomingIntent(intent);
+    }
+
+    private void handleIncomingIntent(Intent intent) {
+        if (intent != null && intent.hasExtra("video_url")) {
+            String url = intent.getStringExtra("video_url");
+            if (url != null && !url.trim().isEmpty()) {
+                playVideo(url.trim());
+            }
+        }
     }
 
     private void updateIpAddress() {
