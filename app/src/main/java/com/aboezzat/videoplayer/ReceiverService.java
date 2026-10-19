@@ -9,11 +9,11 @@ import android.os.Build;
 import android.os.IBinder;
 import androidx.core.app.NotificationCompat;
 import fi.iki.elonen.NanoHTTPD;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -54,7 +54,7 @@ public class ReceiverService extends Service {
     private Notification buildNotification() {
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("AboEzzat Player")
-                .setContentText("السيرفر نشط وجاهز لاستقبال وفك الفيديوهات")
+                .setContentText("السيرفر نشط وجاهز لتشغيل الفيديوهات والبثوث")
                 .setSmallIcon(R.drawable.app_icon)
                 .setOngoing(true)
                 .build();
@@ -110,7 +110,7 @@ public class ReceiverService extends Service {
                     launchPlayer(finalPlayUrl);
                 });
 
-                return newFixedLengthResponse("OK: Extracting and playing on TV");
+                return newFixedLengthResponse("OK: Processing media on TV");
             }
 
             return newFixedLengthResponse("AboEzzat TV Receiver is Online");
@@ -118,38 +118,49 @@ public class ReceiverService extends Service {
     }
 
     private String resolveMediaUrl(String originalUrl) {
-        // روابط يوتيوب أو الروابط المباشرة الخام
+        // روابط يوتيوب أو الملفات المباشرة والبثوث المباشرة الخام
         if (originalUrl.contains("youtube.com") || originalUrl.contains("youtu.be")
                 || originalUrl.endsWith(".mp4") || originalUrl.endsWith(".m3u8") || originalUrl.endsWith(".mkv")) {
             return originalUrl;
         }
 
-        // 1. استخراج فيديو تيك توك المباشر عبر محرك TikWM بدون علامة مائية
+        // 1. تيك توك: فيديوهات عادية + دعم البث المباشر (Live Streams)
         if (originalUrl.contains("tiktok.com")) {
             try {
                 String endpoint = "https://www.tikwm.com/api/?url=" + URLEncoder.encode(originalUrl, "UTF-8");
-                URL url = new URL(endpoint);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-                conn.setConnectTimeout(6000);
-                conn.setReadTimeout(6000);
+                String response = fetchHttp(endpoint);
+                JSONObject json = new JSONObject(response);
+                if (json.optInt("code") == 0 && json.has("data")) {
+                    JSONObject data = json.getJSONObject("data");
+                    
+                    // لو بث مباشر هيرجع رابط m3u8 أو flv
+                    if (data.has("live_url")) {
+                        return data.getString("live_url");
+                    }
+                    if (data.has("play")) {
+                        String playUrl = data.getString("play");
+                        if (!playUrl.startsWith("http")) {
+                            playUrl = "https://www.tikwm.com" + playUrl;
+                        }
+                        return playUrl;
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
 
-                if (conn.getResponseCode() == 200) {
-                    BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = br.readLine()) != null) sb.append(line);
-
-                    JSONObject json = new JSONObject(sb.toString());
-                    if (json.optInt("code") == 0 && json.has("data")) {
-                        JSONObject data = json.getJSONObject("data");
-                        String playUrl = data.optString("play");
-                        if (playUrl != null && !playUrl.isEmpty()) {
-                            if (!playUrl.startsWith("http")) {
-                                playUrl = "https://www.tikwm.com" + playUrl;
-                            }
-                            return playUrl;
+        // 2. إنستجرام وفيديوهات ريلز (Instagram Reels & Videos)
+        if (originalUrl.contains("instagram.com")) {
+            try {
+                String endpoint = "https://instagram-media-downloader.vercel.app/api/index?url=" + URLEncoder.encode(originalUrl, "UTF-8");
+                String response = fetchHttp(endpoint);
+                JSONObject json = new JSONObject(response);
+                if (json.has("result")) {
+                    JSONArray arr = json.getJSONArray("result");
+                    if (arr.length() > 0) {
+                        JSONObject media = arr.getJSONObject(0);
+                        if (media.has("video")) {
+                            return media.getString("video");
                         }
                     }
                 }
@@ -157,33 +168,51 @@ public class ReceiverService extends Service {
             }
         }
 
-        // 2. محرك عام لمنصات التواصل (Instagram, Facebook, Twitter)
-        try {
-            URL url = new URL("https://api.vkrdown.com/api/get?url=" + URLEncoder.encode(originalUrl, "UTF-8"));
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-            conn.setConnectTimeout(6000);
-            conn.setReadTimeout(6000);
-
-            if (conn.getResponseCode() == 200) {
-                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = br.readLine()) != null) sb.append(line);
-
-                JSONObject res = new JSONObject(sb.toString());
-                if (res.has("data")) {
-                    JSONObject data = res.getJSONObject("data");
-                    if (data.has("url")) {
-                        return data.getString("url");
-                    }
+        // 3. فيسبوك (Facebook Videos & Reels) + محرك بديل عام
+        if (originalUrl.contains("facebook.com") || originalUrl.contains("fb.watch")) {
+            try {
+                String endpoint = "https://fdown-api.vercel.app/api/fb?url=" + URLEncoder.encode(originalUrl, "UTF-8");
+                String response = fetchHttp(endpoint);
+                JSONObject json = new JSONObject(response);
+                if (json.has("hd")) {
+                    return json.getString("hd");
+                } else if (json.has("sd")) {
+                    return json.getString("sd");
                 }
+            } catch (Exception ignored) {
+            }
+        }
+
+        // 4. محرك استخراج شامل احتياطي لجميع المنصات الأخرى
+        try {
+            String backupEndpoint = "https://all-media-api.vercel.app/api/download?url=" + URLEncoder.encode(originalUrl, "UTF-8");
+            String response = fetchHttp(backupEndpoint);
+            JSONObject json = new JSONObject(response);
+            if (json.has("download_url")) {
+                return json.getString("download_url");
             }
         } catch (Exception ignored) {
         }
 
         return originalUrl;
+    }
+
+    private String fetchHttp(String targetUrl) throws Exception {
+        URL url = new URL(targetUrl);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("GET");
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+        conn.setConnectTimeout(6000);
+        conn.setReadTimeout(6000);
+
+        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        StringBuilder sb = new StringBuilder();
+        String line;
+        while ((line = br.readLine()) != null) {
+            sb.append(line);
+        }
+        br.close();
+        return sb.toString();
     }
 
     private void launchPlayer(String streamUrl) {
@@ -193,3 +222,4 @@ public class ReceiverService extends Service {
         startActivity(playIntent);
     }
 }
+
