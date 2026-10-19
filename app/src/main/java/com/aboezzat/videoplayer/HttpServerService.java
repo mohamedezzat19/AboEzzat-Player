@@ -5,7 +5,6 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
-import android.net.Uri;
 import android.os.Build;
 import android.os.IBinder;
 import androidx.core.app.NotificationCompat;
@@ -27,8 +26,8 @@ public class HttpServerService extends Service {
         super.onCreate();
         createNotificationChannel();
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("AboEzzat Player Service")
-                .setContentText("Listening on port " + PORT)
+                .setContentTitle("AboEzzat Player")
+                .setContentText("الخادم جاهز لاستقبال الفيديوهات على منفذ " + PORT)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .build();
         startForeground(1, notification);
@@ -69,33 +68,30 @@ public class HttpServerService extends Service {
             try {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 String line = reader.readLine();
-                
-                String targetVideoUrl = null;
+                String videoUrl = null;
 
-                if (line != null && (line.startsWith("GET") || line.startsWith("POST"))) {
+                if (line != null) {
                     String[] parts = line.split(" ");
                     if (parts.length > 1) {
                         String fullPath = parts[1];
-
                         if (fullPath.contains("url=")) {
                             String raw = fullPath.substring(fullPath.indexOf("url=") + 4);
                             if (raw.contains("&")) {
                                 raw = raw.substring(0, raw.indexOf("&"));
                             }
-                            targetVideoUrl = URLDecoder.decode(raw, "UTF-8");
+                            videoUrl = URLDecoder.decode(raw, "UTF-8");
                         } else if (fullPath.contains("http://") || fullPath.contains("https://")) {
                             int httpIndex = fullPath.indexOf("http://");
                             if (httpIndex == -1) httpIndex = fullPath.indexOf("https://");
-                            targetVideoUrl = URLDecoder.decode(fullPath.substring(httpIndex), "UTF-8");
+                            videoUrl = URLDecoder.decode(fullPath.substring(httpIndex), "UTF-8");
                         }
                     }
                 }
 
-                // رد فوري للمتصفح لمنع خطأ Not Found أو Timeout
-                String responseBody = "OK";
+                String responseBody = "Video Sent Successfully!";
                 String httpResponse = "HTTP/1.1 200 OK\r\n" +
                         "Content-Type: text/plain; charset=UTF-8\r\n" +
-                        "Content-Length: " + responseBody.getBytes().length + "\r\n" +
+                        "Content-Length: " + responseBody.getBytes("UTF-8").length + "\r\n" +
                         "Access-Control-Allow-Origin: *\r\n" +
                         "Connection: close\r\n\r\n" +
                         responseBody;
@@ -105,13 +101,11 @@ public class HttpServerService extends Service {
                 out.flush();
                 socket.close();
 
-                // تشغيل شاشة المشغل مباشرة إذا تم العثور على الرابط
-                if (targetVideoUrl != null && !targetVideoUrl.trim().isEmpty()) {
-                    Intent intent = new Intent(HttpServerService.this, PlayerActivity.class);
-                    intent.setData(Uri.parse(targetVideoUrl.trim()));
-                    intent.putExtra("video_url", targetVideoUrl.trim());
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                    startActivity(intent);
+                if (videoUrl != null && !videoUrl.trim().isEmpty()) {
+                    Intent broadcastIntent = new Intent("com.aboezzat.videoplayer.PLAY_VIDEO");
+                    broadcastIntent.setPackage(getPackageName());
+                    broadcastIntent.putExtra("video_url", videoUrl.trim());
+                    sendBroadcast(broadcastIntent);
                 }
 
             } catch (Exception e) {
