@@ -3,6 +3,7 @@ package com.aboezzat.videoplayer;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.os.Build;
@@ -39,7 +40,7 @@ public class HttpServerService extends Service {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
                     "AboEzzat Server",
-                    NotificationManager.IMPORTANCE_LOW
+                    NotificationManager.IMPORTANCE_HIGH
             );
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
@@ -102,6 +103,13 @@ public class HttpServerService extends Service {
                 socket.close();
 
                 if (videoUrl != null && !videoUrl.trim().isEmpty()) {
+                    // 1. فتح شاشة التطبيق وإحضارها للمقدمة فوراً
+                    Intent launchIntent = new Intent(HttpServerService.this, MainActivity.class);
+                    launchIntent.putExtra("video_url", videoUrl.trim());
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                    startActivity(launchIntent);
+
+                    // 2. إرسال البث الداخلي في حال كان التطبيق مفتوحاً بالفعل
                     Intent broadcastIntent = new Intent("com.aboezzat.videoplayer.PLAY_VIDEO");
                     broadcastIntent.setPackage(getPackageName());
                     broadcastIntent.putExtra("video_url", videoUrl.trim());
