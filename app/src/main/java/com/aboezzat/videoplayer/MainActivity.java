@@ -5,7 +5,6 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.LinearLayout;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -14,8 +13,8 @@ import androidx.media3.ui.PlayerView;
 public class MainActivity extends AppCompatActivity {
 
     private PlayerView playerView;
+    private View welcomeLayout;
     private ExoPlayer player;
-    private LinearLayout welcomeLayout;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -26,25 +25,10 @@ public class MainActivity extends AppCompatActivity {
         playerView = findViewById(R.id.player_view);
         welcomeLayout = findViewById(R.id.welcome_layout);
 
-        initPlayer();
-        startReceiverService();
+        // تشغيل خدمة السيرفر
+        startService(new Intent(this, ReceiverService.class));
+
         handleIntent(getIntent());
-    }
-
-    private void startReceiverService() {
-        try {
-            Intent serviceIntent = new Intent(this, ReceiverService.class);
-            startService(serviceIntent);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void initPlayer() {
-        if (player == null) {
-            player = new ExoPlayer.Builder(this).build();
-            playerView.setPlayer(player);
-        }
     }
 
     @Override
@@ -74,27 +58,21 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        if (player == null) {
-            initPlayer();
-        }
+        // إخفاء شاشة الترحيب وإظهار مشغل الفيديو بالكامل
+        runOnUiThread(() -> {
+            if (welcomeLayout != null) welcomeLayout.setVisibility(View.GONE);
+            if (playerView != null) playerView.setVisibility(View.VISIBLE);
 
-        // إخفاء شاشة الترحيب وإظهار الفيديو
-        if (welcomeLayout != null) {
-            welcomeLayout.setVisibility(View.GONE);
-        }
+            if (player == null) {
+                player = new ExoPlayer.Builder(MainActivity.this).build();
+                playerView.setPlayer(player);
+            }
 
-        MediaItem mediaItem = MediaItem.fromUri(Uri.parse(url));
-        player.setMediaItem(mediaItem);
-        player.prepare();
-        player.play();
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        if (player != null) {
-            player.pause();
-        }
+            MediaItem mediaItem = MediaItem.fromUri(Uri.parse(url));
+            player.setMediaItem(mediaItem);
+            player.prepare();
+            player.play();
+        });
     }
 
     @Override
