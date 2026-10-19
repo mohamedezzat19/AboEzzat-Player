@@ -1,20 +1,33 @@
 package com.aboezzat.videoplayer;
 
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
+import fi.iki.elonen.NanoHTTPD;
+import java.io.IOException;
+import java.math.BigInteger;
+import java.net.InetAddress;
+import java.nio.ByteOrder;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
 
     private PlayerView playerView;
     private View welcomeLayout;
+    private TextView tvIpAddress;
+    private TextView tvServerStatus;
     private ExoPlayer player;
+    private LocalServer server;
+    private static final int PORT = 8080;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -24,11 +37,60 @@ public class MainActivity extends AppCompatActivity {
 
         playerView = findViewById(R.id.player_view);
         welcomeLayout = findViewById(R.id.welcome_layout);
+        tvIpAddress = findViewById(R.id.tv_ip_address);
+        tvServerStatus = findViewById(R.id.tv_server_status);
 
-        // تشغيل خدمة السيرفر
-        startService(new Intent(this, ReceiverService.class));
+        // إظهار الآي بي وتشغيل السيرفر الداخلي
+        displayIpAddress();
+        startLocalServer();
 
         handleIntent(getIntent());
+    }
+
+    private void displayIpAddress() {
+        try {
+            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            int ipAddress = wm.getConnectionInfo().getIpAddress();
+            if (ByteOrder.nativeOrder().equals(ByteOrder.LITTLE_ENDIAN)) {
+                ipAddress = Integer.reverseBytes(ipAddress);
+            }
+            byte[] ipByteArray = BigInteger.valueOf(ipAddress).toByteArray();
+            String ip = InetAddress.getByAddress(ipByteArray).getHostAddress();
+            tvIpAddress.setText("عنوان الاتصال: http://" + ip + ":" + PORT);
+        } catch (Exception e) {
+            tvIpAddress.setText("البورت: " + PORT + " (تحقق من اتصال الواي فاي)");
+        }
+    }
+
+    private void startLocalServer() {
+        if (server == null) {
+            server = new LocalServer(PORT);
+            try {
+                server.start();
+                tvServerStatus.setText("حالة السيرفر: متصل وفعال ✓");
+            } catch (IOException e) {
+                tvServerStatus.setText("تعذر تشغيل السيرفر على بورت " + PORT);
+            }
+        }
+    }
+
+    private class LocalServer extends NanoHTTPD {
+        public LocalServer(int port) {
+            super(port);
+        }
+
+        @Override
+        public Response serve(IHTTPSession session) {
+            Map<String, String> params = session.getParms();
+            String url = params.get("url");
+
+            if (url != null && !url.trim().isEmpty()) {
+                runOnUiThread(() -> playMedia(url.trim()));
+                return newFixedLengthResponse("OK: Playing on TV");
+            }
+
+            return newFixedLengthResponse("AboEzzat TV Receiver is Online");
+        }
     }
 
     @Override
@@ -58,7 +120,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // إخفاء شاشة الترحيب وإظهار مشغل الفيديو بالكامل
         runOnUiThread(() -> {
             if (welcomeLayout != null) welcomeLayout.setVisibility(View.GONE);
             if (playerView != null) playerView.setVisibility(View.VISIBLE);
@@ -78,6 +139,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (server != null) {
+            server.stop();
+        }
         if (player != null) {
             player.release();
             player = null;
