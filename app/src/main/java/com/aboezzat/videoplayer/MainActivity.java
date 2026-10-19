@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
@@ -12,12 +13,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
-import fi.iki.elonen.NanoHTTPD;
-import java.io.IOException;
 import java.math.BigInteger;
 import java.net.InetAddress;
 import java.nio.ByteOrder;
-import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -26,7 +24,6 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvIpAddress;
     private TextView tvServerStatus;
     private ExoPlayer player;
-    private LocalServer server;
     private static final int PORT = 8080;
 
     @Override
@@ -40,10 +37,15 @@ public class MainActivity extends AppCompatActivity {
         tvIpAddress = findViewById(R.id.tv_ip_address);
         tvServerStatus = findViewById(R.id.tv_server_status);
 
-        // إظهار الآي بي وتشغيل السيرفر الداخلي
-        displayIpAddress();
-        startLocalServer();
+        // تشغيل خدمة الاستقبال الخلفية الدائمة
+        Intent serviceIntent = new Intent(this, ReceiverService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent);
+        } else {
+            startService(serviceIntent);
+        }
 
+        displayIpAddress();
         handleIntent(getIntent());
     }
 
@@ -57,39 +59,9 @@ public class MainActivity extends AppCompatActivity {
             byte[] ipByteArray = BigInteger.valueOf(ipAddress).toByteArray();
             String ip = InetAddress.getByAddress(ipByteArray).getHostAddress();
             tvIpAddress.setText("عنوان الاتصال: http://" + ip + ":" + PORT);
+            tvServerStatus.setText("حالة السيرفر: متصل في الخلفية ✓");
         } catch (Exception e) {
-            tvIpAddress.setText("البورت: " + PORT + " (تحقق من اتصال الواي فاي)");
-        }
-    }
-
-    private void startLocalServer() {
-        if (server == null) {
-            server = new LocalServer(PORT);
-            try {
-                server.start();
-                tvServerStatus.setText("حالة السيرفر: متصل وفعال ✓");
-            } catch (IOException e) {
-                tvServerStatus.setText("تعذر تشغيل السيرفر على بورت " + PORT);
-            }
-        }
-    }
-
-    private class LocalServer extends NanoHTTPD {
-        public LocalServer(int port) {
-            super(port);
-        }
-
-        @Override
-        public Response serve(IHTTPSession session) {
-            Map<String, String> params = session.getParms();
-            String url = params.get("url");
-
-            if (url != null && !url.trim().isEmpty()) {
-                runOnUiThread(() -> playMedia(url.trim()));
-                return newFixedLengthResponse("OK: Playing on TV");
-            }
-
-            return newFixedLengthResponse("AboEzzat TV Receiver is Online");
+            tvIpAddress.setText("البورت: " + PORT);
         }
     }
 
@@ -139,9 +111,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (server != null) {
-            server.stop();
-        }
         if (player != null) {
             player.release();
             player = null;
