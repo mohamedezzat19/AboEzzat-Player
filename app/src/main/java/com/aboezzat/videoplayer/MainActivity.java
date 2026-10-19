@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.WindowManager;
+import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -17,16 +18,29 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.activity_main);
-        playerView = findViewById(R.id.player_view);
 
-        initializePlayer();
+        playerView = findViewById(R.id.player_view);
+        initPlayer();
+
+        // تشغيل سيرفر الاستقبال المحلي في الخلفية فور فتح التطبيق
+        startReceiverService();
+
+        // معالجة أي رابط ممرر
         handleIntent(getIntent());
     }
 
-    private void initializePlayer() {
+    private void startReceiverService() {
+        try {
+            Intent serviceIntent = new Intent(this, ReceiverService.class);
+            startService(serviceIntent);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void initPlayer() {
         if (player == null) {
             player = new ExoPlayer.Builder(this).build();
             playerView.setPlayer(player);
@@ -50,26 +64,26 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void playMedia(String url) {
-        // لو الرابط يوتيوب، افتحه فوراً بتطبيق خارجي (زي SmartTube أو المتصفح) مباشرة بأبسط أمر أندرويد قياسي
+        // لو الرابط يوتيوب يتم توجيهه إلى SmartTube
         if (url.contains("youtube.com") || url.contains("youtu.be")) {
             try {
-                Intent youtubeIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                youtubeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(youtubeIntent);
-                finish();
+                Intent ytIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                ytIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(ytIntent);
                 return;
             } catch (Exception ignored) {
             }
         }
 
-        // تشغيل مباشر لأي رابط فيديو آخر داخل مشغلنا
+        // تشغيل أي فيديو آخر داخل ExoPlayer
         if (player == null) {
-            initializePlayer();
+            initPlayer();
         }
         MediaItem mediaItem = MediaItem.fromUri(Uri.parse(url));
         player.setMediaItem(mediaItem);
         player.prepare();
         player.play();
+        Toast.makeText(this, "جاري التشغيل...", Toast.LENGTH_SHORT).show();
     }
 
     @Override
