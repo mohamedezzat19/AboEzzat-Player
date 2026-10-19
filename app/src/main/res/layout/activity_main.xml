@@ -3,13 +3,55 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="#0A0A0A">
 
+    <!-- مشغل الفيديو -->
     <androidx.media3.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:use_controller="true"
         app:resize_mode="fit" />
+
+    <!-- الواجهة الترحيبية الثابتة لما مفيش فيديو -->
+    <LinearLayout
+        android:id="@+id/welcome_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="32dp">
+
+        <!-- النص العلوي -->
+        <TextView
+            android:id="@+id/tv_welcome"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="أهلاً بك يا أبو عزت"
+            android:textColor="#FFD700"
+            android:textSize="32sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="24dp" />
+
+        <!-- أيقونة التطبيق في المنتصف -->
+        <ImageView
+            android:id="@+id/img_logo"
+            android:layout_width="160dp"
+            android:layout_height="160dp"
+            android:src="@mipmap/ic_launcher"
+            android:contentDescription="App Logo"
+            android:layout_marginBottom="24dp" />
+
+        <!-- الذكر في الأسفل -->
+        <TextView
+            android:id="@+id/tv_dhikr"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="سُبْحَانَ اللَّهِ وَبِحَمْدِهِ ، سُبْحَانَ اللَّهِ الْعَظِيمِ"
+            android:textColor="#E0E0E0"
+            android:textSize="22sp"
+            android:textStyle="italic" />
+
+    </LinearLayout>
 
 </FrameLayout>
