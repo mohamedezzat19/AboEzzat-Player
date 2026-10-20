@@ -9,7 +9,6 @@ import android.os.Build;
 import android.os.IBinder;
 import androidx.core.app.NotificationCompat;
 import fi.iki.elonen.NanoHTTPD;
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -21,8 +20,6 @@ import java.net.URLEncoder;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class ReceiverService extends Service {
 
@@ -57,7 +54,7 @@ public class ReceiverService extends Service {
     private Notification buildNotification() {
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("AboEzzat Player")
-                .setContentText("السيرفر نشط وجاهز لتشغيل جميع المنصات")
+                .setContentText("السيرفر نشط وجاهز لتشغيل جميع الفيديوهات")
                 .setSmallIcon(R.drawable.app_icon)
                 .setOngoing(true)
                 .build();
@@ -110,94 +107,84 @@ public class ReceiverService extends Service {
 
                 executor.execute(() -> {
                     String finalPlayUrl = resolveMediaUrl(targetUrl);
-                    launchPlayer(finalPlayUrl);
+                    // نتأكد إن الرابط المستخرج صالح قبل ما نفتح المشغل
+                    if (finalPlayUrl != null && !finalPlayUrl.isEmpty() && isPlayable(finalPlayUrl)) {
+                        launchPlayer(finalPlayUrl);
+                    }
                 });
 
-                return newFixedLengthResponse("OK: Playing on TV");
+                return newFixedLengthResponse("OK: URL Received");
             }
 
             return newFixedLengthResponse("AboEzzat TV Receiver is Online");
         }
     }
 
+    private boolean isPlayable(String url) {
+        return url.contains("youtube.com") || url.contains("youtu.be")
+                || url.contains(".mp4") || url.contains(".m3u8") || url.contains(".mkv")
+                || url.contains("googlevideo.com") || url.contains("fbcdn.net") 
+                || url.contains("cdninstagram.com") || url.contains("tiktokcdn.com");
+    }
+
     private String resolveMediaUrl(String originalUrl) {
+        // 1. يوتيوب والملفات الخام المباشرة
         if (originalUrl.contains("youtube.com") || originalUrl.contains("youtu.be")
                 || originalUrl.endsWith(".mp4") || originalUrl.endsWith(".m3u8") || originalUrl.endsWith(".mkv")) {
             return originalUrl;
         }
 
-        // 1. تيك توك: فيديوهات عادية وبثوث مباشرة (Live)
+        // 2. تيك توك: استخدام محرك TikWM الصاروخي المباشر
         if (originalUrl.contains("tiktok.com")) {
-            // فحص إذا كان الرابط بث مباشر Live
-            if (originalUrl.contains("/live")) {
-                String liveStream = extractTikTokLive(originalUrl);
-                if (liveStream != null) return liveStream;
-            }
-
-            // الفيديوهات العادية عبر محرك TikWM الناجح
             try {
                 String endpoint = "https://www.tikwm.com/api/?url=" + URLEncoder.encode(originalUrl, "UTF-8");
-                String response = fetchHttp(endpoint, "GET", null, false);
-                JSONObject json = new JSONObject(response);
-                if (json.optInt("code") == 0 && json.has("data")) {
-                    JSONObject data = json.getJSONObject("data");
-                    if (data.has("play")) {
-                        String playUrl = data.getString("play");
-                        if (!playUrl.startsWith("http")) playUrl = "https://www.tikwm.com" + playUrl;
-                        return playUrl;
+                String res = fetchGet(endpoint, 3500);
+                if (res != null) {
+                    JSONObject json = new JSONObject(res);
+                    if (json.optInt("code") == 0 && json.has("data")) {
+                        JSONObject data = json.getJSONObject("data");
+                        if (data.has("play")) {
+                            String playUrl = data.getString("play");
+                            if (!playUrl.startsWith("http")) playUrl = "https://www.tikwm.com" + playUrl;
+                            return playUrl;
+                        }
                     }
                 }
             } catch (Exception ignored) {
             }
         }
 
-        // 2. فيسبوك (Facebook Videos / Reels)
-        if (originalUrl.contains("facebook.com") || originalUrl.contains("fb.watch")) {
+        // 3. إنستجرام، فيسبوك، ثريدز، تويتر/X: المحرك المتخصص للمنصات المشفرة
+        String[] metaApis = {
+            "https://cobalt-api.kwiatekm.tokyo/api/json",
+            "https://api.cobalt.0x3.ch/api/json"
+        };
+
+        for (String api : metaApis) {
             try {
-                String endpoint = "https://fdown.net/download.php";
-                String postData = "URLz=" + URLEncoder.encode(originalUrl, "UTF-8");
-                String html = fetchHttp(endpoint, "POST", postData, true);
-
-                Pattern patternHd = Pattern.compile("id=\"hdlink\"\\s+href=\"([^\"]+)\"");
-                Matcher matcherHd = patternHd.matcher(html);
-                if (matcherHd.find()) {
-                    return decodeHtml(matcherHd.group(1));
-                }
-
-                Pattern patternSd = Pattern.compile("id=\"sdlink\"\\s+href=\"([^\"]+)\"");
-                Matcher matcherSd = patternSd.matcher(html);
-                if (matcherSd.find()) {
-                    return decodeHtml(matcherSd.group(1));
+                JSONObject payload = new JSONObject();
+                payload.put("url", originalUrl);
+                String res = fetchPost(api, payload.toString(), 3500);
+                if (res != null) {
+                    JSONObject json = new JSONObject(res);
+                    if (json.has("url")) {
+                        return json.getString("url");
+                    }
                 }
             } catch (Exception ignored) {
             }
         }
 
-        // 3. إنستجرام وثريدز (Instagram & Threads)
+        // 4. محرك مخصص لإنستجرام وثريدز كخطة بديلة سريعة
         if (originalUrl.contains("instagram.com") || originalUrl.contains("threads.net")) {
             try {
-                // محرك fastdl المباشر
-                String endpoint = "https://api.snapinsta.to/api/video?url=" + URLEncoder.encode(originalUrl, "UTF-8");
-                String response = fetchHttp(endpoint, "GET", null, false);
-                JSONObject json = new JSONObject(response);
-                if (json.has("url")) {
-                    return json.getString("url");
-                }
-            } catch (Exception ignored) {
-            }
-
-            // محرك احتياطي سريع لإنستجرام
-            try {
-                String endpoint = "https://saveig.app/api/ajaxSearch";
-                String postData = "q=" + URLEncoder.encode(originalUrl, "UTF-8") + "&t=media&lang=en";
-                String res = fetchHttp(endpoint, "POST", postData, true);
-                JSONObject json = new JSONObject(res);
-                if (json.has("data")) {
-                    String htmlData = json.getString("data");
-                    Pattern p = Pattern.compile("href=\"(https://[^\"]+download[^\"]+)\"");
-                    Matcher m = p.matcher(htmlData);
-                    if (m.find()) {
-                        return decodeHtml(m.group(1));
+                String igEndpoint = "https://api.vkrdown.com/api/get?url=" + URLEncoder.encode(originalUrl, "UTF-8");
+                String res = fetchGet(igEndpoint, 3500);
+                if (res != null) {
+                    JSONObject json = new JSONObject(res);
+                    if (json.has("data")) {
+                        JSONObject data = json.getJSONObject("data");
+                        if (data.has("url")) return data.getString("url");
                     }
                 }
             } catch (Exception ignored) {
@@ -207,58 +194,55 @@ public class ReceiverService extends Service {
         return originalUrl;
     }
 
-    private String extractTikTokLive(String liveUrl) {
+    private String fetchGet(String targetUrl, int timeout) {
         try {
-            // جلب صفحة البث لسحب رابط التدفق المباشر
-            String html = fetchHttp(liveUrl, "GET", null, false);
-            Pattern pattern = Pattern.compile("\"liveUrl\":\"([^\"]+)\"");
-            Matcher matcher = pattern.matcher(html);
-            if (matcher.find()) {
-                String stream = matcher.group(1).replace("\\u002F", "/");
-                return stream;
-            }
+            URL url = new URL(targetUrl);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+            conn.setConnectTimeout(timeout);
+            conn.setReadTimeout(timeout);
 
-            Pattern patternHls = Pattern.compile("(https://[^\"]+\\.m3u8[^\"]*)");
-            Matcher matcherHls = patternHls.matcher(html);
-            if (matcherHls.find()) {
-                return matcherHls.group(1).replace("\\u0026", "&");
+            if (conn.getResponseCode() == 200) {
+                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                return sb.toString();
             }
         } catch (Exception ignored) {
         }
         return null;
     }
 
-    private String decodeHtml(String str) {
-        return str.replace("&amp;", "&").replace("&quot;", "\"").replace("&#039;", "'").replace("&lt;", "<").replace("&gt;", ">");
-    }
-
-    private String fetchHttp(String targetUrl, String method, String postData, boolean isForm) throws Exception {
-        URL url = new URL(targetUrl);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod(method);
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-        conn.setRequestProperty("Accept", "*/*");
-        conn.setConnectTimeout(9000);
-        conn.setReadTimeout(9000);
-
-        if ("POST".equalsIgnoreCase(method) && postData != null) {
-            if (isForm) {
-                conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-            } else {
-                conn.setRequestProperty("Content-Type", "application/json");
-            }
+    private String fetchPost(String targetUrl, String body, int timeout) {
+        try {
+            URL url = new URL(targetUrl);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Accept", "application/json");
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+            conn.setConnectTimeout(timeout);
+            conn.setReadTimeout(timeout);
             conn.setDoOutput(true);
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(postData.getBytes("UTF-8"));
-            }
-        }
 
-        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-        StringBuilder sb = new StringBuilder();
-        String line;
-        while ((line = br.readLine()) != null) sb.append(line);
-        br.close();
-        return sb.toString();
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes("UTF-8"));
+            }
+
+            if (conn.getResponseCode() == 200) {
+                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                return sb.toString();
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     private void launchPlayer(String streamUrl) {
