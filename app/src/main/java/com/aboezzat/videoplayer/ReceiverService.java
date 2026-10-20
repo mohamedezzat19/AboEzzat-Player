@@ -14,6 +14,7 @@ import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -54,7 +55,7 @@ public class ReceiverService extends Service {
     private Notification buildNotification() {
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("AboEzzat Player")
-                .setContentText("السيرفر نشط وجاهز لتشغيل الفيديوهات والبثوث")
+                .setContentText("السيرفر نشط وجاهز لتشغيل الميديا")
                 .setSmallIcon(R.drawable.app_icon)
                 .setOngoing(true)
                 .build();
@@ -110,7 +111,7 @@ public class ReceiverService extends Service {
                     launchPlayer(finalPlayUrl);
                 });
 
-                return newFixedLengthResponse("OK: Processing media on TV");
+                return newFixedLengthResponse("OK: Playing on TV");
             }
 
             return newFixedLengthResponse("AboEzzat TV Receiver is Online");
@@ -118,30 +119,28 @@ public class ReceiverService extends Service {
     }
 
     private String resolveMediaUrl(String originalUrl) {
-        // روابط يوتيوب أو الملفات المباشرة والبثوث المباشرة الخام
         if (originalUrl.contains("youtube.com") || originalUrl.contains("youtu.be")
                 || originalUrl.endsWith(".mp4") || originalUrl.endsWith(".m3u8") || originalUrl.endsWith(".mkv")) {
             return originalUrl;
         }
 
-        // 1. تيك توك: فيديوهات عادية + دعم البث المباشر (Live Streams)
+        // 1. تيك توك: فيديوهات عادية وبثوث مباشرة
         if (originalUrl.contains("tiktok.com")) {
             try {
                 String endpoint = "https://www.tikwm.com/api/?url=" + URLEncoder.encode(originalUrl, "UTF-8");
-                String response = fetchHttp(endpoint);
+                String response = fetchHttp(endpoint, "GET", null);
                 JSONObject json = new JSONObject(response);
                 if (json.optInt("code") == 0 && json.has("data")) {
                     JSONObject data = json.getJSONObject("data");
                     
-                    // لو بث مباشر هيرجع رابط m3u8 أو flv
+                    // فحص رابط البث المباشر HLS
                     if (data.has("live_url")) {
-                        return data.getString("live_url");
+                        String live = data.optString("live_url");
+                        if (live != null && !live.isEmpty()) return live;
                     }
                     if (data.has("play")) {
                         String playUrl = data.getString("play");
-                        if (!playUrl.startsWith("http")) {
-                            playUrl = "https://www.tikwm.com" + playUrl;
-                        }
+                        if (!playUrl.startsWith("http")) playUrl = "https://www.tikwm.com" + playUrl;
                         return playUrl;
                     }
                 }
@@ -149,68 +148,57 @@ public class ReceiverService extends Service {
             }
         }
 
-        // 2. إنستجرام وفيديوهات ريلز (Instagram Reels & Videos)
-        if (originalUrl.contains("instagram.com")) {
-            try {
-                String endpoint = "https://instagram-media-downloader.vercel.app/api/index?url=" + URLEncoder.encode(originalUrl, "UTF-8");
-                String response = fetchHttp(endpoint);
-                JSONObject json = new JSONObject(response);
-                if (json.has("result")) {
-                    JSONArray arr = json.getJSONArray("result");
-                    if (arr.length() > 0) {
-                        JSONObject media = arr.getJSONObject(0);
-                        if (media.has("video")) {
-                            return media.getString("video");
-                        }
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        // 3. فيسبوك (Facebook Videos & Reels) + محرك بديل عام
-        if (originalUrl.contains("facebook.com") || originalUrl.contains("fb.watch")) {
-            try {
-                String endpoint = "https://fdown-api.vercel.app/api/fb?url=" + URLEncoder.encode(originalUrl, "UTF-8");
-                String response = fetchHttp(endpoint);
-                JSONObject json = new JSONObject(response);
-                if (json.has("hd")) {
-                    return json.getString("hd");
-                } else if (json.has("sd")) {
-                    return json.getString("sd");
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        // 4. محرك استخراج شامل احتياطي لجميع المنصات الأخرى
+        // 2. محرك بديل فوري لفيسبوك وإنستجرام عبر Rapid Extraction API
         try {
-            String backupEndpoint = "https://all-media-api.vercel.app/api/download?url=" + URLEncoder.encode(originalUrl, "UTF-8");
-            String response = fetchHttp(backupEndpoint);
-            JSONObject json = new JSONObject(response);
-            if (json.has("download_url")) {
-                return json.getString("download_url");
+            String apiUrl = "https://co.wuk.sh/api/json";
+            JSONObject body = new JSONObject();
+            body.put("url", originalUrl);
+
+            String response = fetchHttp(apiUrl, "POST", body.toString());
+            JSONObject resJson = new JSONObject(response);
+            if (resJson.has("url")) {
+                return resJson.getString("url");
             }
         } catch (Exception ignored) {
+        }
+
+        // 3. محرك إنستجرام الاحتياطي المباشر
+        if (originalUrl.contains("instagram.com")) {
+            try {
+                String endpoint = "https://api.threadsphotodownloader.com/v2/media?url=" + URLEncoder.encode(originalUrl, "UTF-8");
+                String response = fetchHttp(endpoint, "GET", null);
+                JSONObject json = new JSONObject(response);
+                if (json.has("video_url")) {
+                    return json.getString("video_url");
+                }
+            } catch (Exception ignored) {
+            }
         }
 
         return originalUrl;
     }
 
-    private String fetchHttp(String targetUrl) throws Exception {
+    private String fetchHttp(String targetUrl, String method, String postData) throws Exception {
         URL url = new URL(targetUrl);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("GET");
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-        conn.setConnectTimeout(6000);
-        conn.setReadTimeout(6000);
+        conn.setRequestMethod(method);
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+        conn.setRequestProperty("Accept", "application/json");
+        conn.setConnectTimeout(8000);
+        conn.setReadTimeout(8000);
+
+        if ("POST".equalsIgnoreCase(method) && postData != null) {
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setDoOutput(true);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(postData.getBytes("UTF-8"));
+            }
+        }
 
         BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
         StringBuilder sb = new StringBuilder();
         String line;
-        while ((line = br.readLine()) != null) {
-            sb.append(line);
-        }
+        while ((line = br.readLine()) != null) sb.append(line);
         br.close();
         return sb.toString();
     }
@@ -222,4 +210,3 @@ public class ReceiverService extends Service {
         startActivity(playIntent);
     }
 }
-
