@@ -11,7 +11,10 @@ import android.view.WindowManager;
 import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.MimeTypes;
+import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
 import java.math.BigInteger;
 import java.net.InetAddress;
@@ -37,7 +40,6 @@ public class MainActivity extends AppCompatActivity {
         tvIpAddress = findViewById(R.id.tv_ip_address);
         tvServerStatus = findViewById(R.id.tv_server_status);
 
-        // تشغيل خدمة الاستقبال الخلفية الدائمة
         Intent serviceIntent = new Intent(this, ReceiverService.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent);
@@ -97,12 +99,29 @@ public class MainActivity extends AppCompatActivity {
             if (playerView != null) playerView.setVisibility(View.VISIBLE);
 
             if (player == null) {
-                player = new ExoPlayer.Builder(MainActivity.this).build();
+                // ترويسة متصفح حقيقية تمنع خطأ 403 وتدعم HLS للبث المباشر
+                DefaultHttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory()
+                        .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                        .setAllowCrossProtocolRedirects(true);
+
+                DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(this)
+                        .setDataSourceFactory(httpDataSourceFactory);
+
+                player = new ExoPlayer.Builder(MainActivity.this)
+                        .setMediaSourceFactory(mediaSourceFactory)
+                        .build();
+
                 playerView.setPlayer(player);
             }
 
-            MediaItem mediaItem = MediaItem.fromUri(Uri.parse(url));
-            player.setMediaItem(mediaItem);
+            MediaItem.Builder mediaItemBuilder = new MediaItem.Builder().setUri(Uri.parse(url));
+
+            // تحديد تلقائي لنوع البث إذا كان m3u8
+            if (url.contains(".m3u8")) {
+                mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8);
+            }
+
+            player.setMediaItem(mediaItemBuilder.build());
             player.prepare();
             player.play();
         });
