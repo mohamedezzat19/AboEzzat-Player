@@ -2,13 +2,16 @@ package com.aboezzat.videoplayer;
 
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.ImageView;
 import android.widget.TextView;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
@@ -16,6 +19,12 @@ import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.DataSource;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
+import com.bumptech.glide.load.engine.GlideException;
+import com.bumptech.glide.request.RequestListener;
+import com.bumptech.glide.request.target.Target;
 import java.math.BigInteger;
 import java.net.InetAddress;
 import java.nio.ByteOrder;
@@ -23,6 +32,7 @@ import java.nio.ByteOrder;
 public class MainActivity extends AppCompatActivity {
 
     private PlayerView playerView;
+    private ImageView imageView;
     private View welcomeLayout;
     private TextView tvIpAddress;
     private TextView tvServerStatus;
@@ -36,6 +46,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         playerView = findViewById(R.id.player_view);
+        imageView = findViewById(R.id.image_view);
         welcomeLayout = findViewById(R.id.welcome_layout);
         tvIpAddress = findViewById(R.id.tv_ip_address);
         tvServerStatus = findViewById(R.id.tv_server_status);
@@ -75,12 +86,72 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void handleIntent(Intent intent) {
-        if (intent != null && intent.hasExtra("video_url")) {
-            String url = intent.getStringExtra("video_url");
-            if (url != null && !url.trim().isEmpty()) {
-                playMedia(url.trim());
+        if (intent == null) return;
+
+        // استقبال رابط صورة صريح
+        if (intent.hasExtra("image_url")) {
+            String imageUrl = intent.getStringExtra("image_url");
+            if (imageUrl != null && !imageUrl.trim().isEmpty()) {
+                displayImage(imageUrl.trim());
+                return;
             }
         }
+
+        // استقبال رابط ميديا عام (فيديو أو صورة)
+        if (intent.hasExtra("video_url")) {
+            String url = intent.getStringExtra("video_url");
+            if (url != null && !url.trim().isEmpty()) {
+                url = url.trim();
+                // فحص إذا كان الرابط صورة بالامتداد
+                if (isImageUrl(url)) {
+                    displayImage(url);
+                } else {
+                    playMedia(url);
+                }
+            }
+        }
+    }
+
+    private boolean isImageUrl(String url) {
+        String lower = url.toLowerCase();
+        return lower.endsWith(".jpg") || lower.endsWith(".jpeg") ||
+               lower.endsWith(".png") || lower.endsWith(".webp") ||
+               lower.endsWith(".gif") || lower.endsWith(".bmp");
+    }
+
+    public void displayImage(String imageUrl) {
+        runOnUiThread(() -> {
+            // 1. إيقاف وإخفاء مشغل الفيديو إن وُجد
+            if (player != null) {
+                player.stop();
+            }
+            if (playerView != null) playerView.setVisibility(View.GONE);
+            if (welcomeLayout != null) welcomeLayout.setVisibility(View.GONE);
+
+            // 2. إظهار عارض الصور
+            if (imageView != null) {
+                imageView.setVisibility(View.VISIBLE);
+
+                // 3. تحميل وعرض الصورة عبر Glide مع احترام زاوية الدوران والأبعاد
+                Glide.with(MainActivity.this)
+                        .load(imageUrl)
+                        .fitCenter()
+                        .diskCacheStrategy(DiskCacheStrategy.NONE)
+                        .skipMemoryCache(true)
+                        .listener(new RequestListener<Drawable>() {
+                            @Override
+                            public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
+                                return false;
+                            }
+
+                            @Override
+                            public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
+                                return false;
+                            }
+                        })
+                        .into(imageView);
+            }
+        });
     }
 
     private void playMedia(String url) {
@@ -95,6 +166,12 @@ public class MainActivity extends AppCompatActivity {
         }
 
         runOnUiThread(() -> {
+            // إخفاء عارض الصور وإفراغ الذاكرة
+            if (imageView != null) {
+                imageView.setVisibility(View.GONE);
+                Glide.with(MainActivity.this).clear(imageView);
+            }
+
             if (welcomeLayout != null) welcomeLayout.setVisibility(View.GONE);
             if (playerView != null) playerView.setVisibility(View.VISIBLE);
 
