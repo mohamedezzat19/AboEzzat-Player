@@ -38,7 +38,7 @@ dependencies {
     implementation 'androidx.media3:media3-exoplayer-hls:1.2.1'
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
 
-    // مكتبة Glide لعرض ومعالجة الصور باحترافية وتدوير تلقائي
+    // مكتبة Glide لعرض وتدوير الصور تلقائياً
     implementation 'com.github.bumptech.glide:glide:4.16.0'
     annotationProcessor 'com.github.bumptech.glide:compiler:4.16.0'
 }
