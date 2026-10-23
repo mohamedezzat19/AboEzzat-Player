@@ -100,14 +100,30 @@ public class ReceiverService extends Service {
         public Response serve(IHTTPSession session) {
             Map<String, String> params = session.getParms();
             String rawUrl = params.get("url");
+            String videoUrl = params.get("video");
+            String audioUrl = params.get("audio");
 
+            // في حالة وصول طلب دمج فيديو + صوت
+            if (videoUrl != null && !videoUrl.trim().isEmpty()) {
+                String finalVideo = videoUrl.trim();
+                String finalAudio = (audioUrl != null && !audioUrl.trim().isEmpty()) ? audioUrl.trim() : null;
+
+                executor.execute(() -> {
+                    String resolvedVideo = resolveMediaUrl(finalVideo);
+                    launchPlayer(resolvedVideo, finalAudio);
+                });
+
+                return newFixedLengthResponse("OK: Merged Stream Received");
+            }
+
+            // في حالة وصول رابط مفرد عادي (فيديو أو صورة أو يوتيوب)
             if (rawUrl != null && !rawUrl.trim().isEmpty()) {
                 String targetUrl = rawUrl.trim();
 
                 executor.execute(() -> {
                     String finalPlayUrl = resolveMediaUrl(targetUrl);
                     if (finalPlayUrl != null && !finalPlayUrl.isEmpty()) {
-                        launchPlayer(finalPlayUrl);
+                        launchPlayer(finalPlayUrl, null);
                     }
                 });
 
@@ -119,13 +135,12 @@ public class ReceiverService extends Service {
     }
 
     private String resolveMediaUrl(String originalUrl) {
-        // روابط يوتيوب أو الروابط المباشرة الخام
         if (originalUrl.contains("youtube.com") || originalUrl.contains("youtu.be")
-                || originalUrl.endsWith(".mp4") || originalUrl.endsWith(".m3u8") || originalUrl.endsWith(".mkv")) {
+                || originalUrl.endsWith(".mp4") || originalUrl.endsWith(".m3u8") || originalUrl.endsWith(".mkv")
+                || originalUrl.endsWith(".jpg") || originalUrl.endsWith(".png") || originalUrl.endsWith(".webp") || originalUrl.endsWith(".jpeg")) {
             return originalUrl;
         }
 
-        // محرك تيك توك الأصلي والسريع بدون أي تعقيد
         if (originalUrl.contains("tiktok.com")) {
             try {
                 String endpoint = "https://www.tikwm.com/api/?url=" + URLEncoder.encode(originalUrl, "UTF-8");
@@ -162,9 +177,12 @@ public class ReceiverService extends Service {
         return originalUrl;
     }
 
-    private void launchPlayer(String streamUrl) {
+    private void launchPlayer(String streamUrl, String audioUrl) {
         Intent playIntent = new Intent(ReceiverService.this, MainActivity.class);
         playIntent.putExtra("video_url", streamUrl);
+        if (audioUrl != null && !audioUrl.isEmpty()) {
+            playIntent.putExtra("audio_url", audioUrl);
+        }
         playIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         startActivity(playIntent);
     }
