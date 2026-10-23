@@ -104,7 +104,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // إضافة فيديو إلى قائمة التشغيل (Queue)
+        // إضافة فيديو لقائمة التشغيل (Queue)
         if (intent.hasExtra("queue_url")) {
             String qUrl = intent.getStringExtra("queue_url");
             addToQueue(qUrl);
@@ -120,7 +120,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // تشغيل ميديا (فيديو أو دمج فيديو وصوت)
+        // تشغيل فيديو مفرد أو دمج فيديو وصوت
         if (intent.hasExtra("video_url")) {
             String videoUrl = intent.getStringExtra("video_url");
             String audioUrl = intent.getStringExtra("audio_url");
@@ -151,7 +151,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // دمج مسار الفيديو ومسار الصوت معاً بـ MergingMediaSource
+    // دمج مسار الصوت ومسار الفيديو للتشغيل معاً
     private void playMergedMedia(String videoUrl, String audioUrl) {
         runOnUiThread(() -> {
             hideImageView();
@@ -230,11 +230,11 @@ public class MainActivity extends AppCompatActivity {
                     break;
                 case "ff":
                 case "forward":
-                    player.seekTo(player.getCurrentPosition() + 10000); // تقديم 10 ثواني
+                    player.seekTo(player.getCurrentPosition() + 10000);
                     break;
                 case "rw":
                 case "rewind":
-                    long backPos = Math.max(player.getCurrentPosition() - 10000, 0); // تأخير 10 ثواني
+                    long backPos = Math.max(player.getCurrentPosition() - 10000, 0);
                     player.seekTo(backPos);
                     break;
                 case "next":
