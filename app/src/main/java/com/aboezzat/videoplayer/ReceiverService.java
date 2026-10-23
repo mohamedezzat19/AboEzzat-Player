@@ -105,7 +105,7 @@ public class ReceiverService extends Service {
             Map<String, String> params = session.getParms();
             String uri = session.getUri();
 
-            // 1. استقبال أوامر الريموت للتحكم في المشغل ومستوى الصوت
+            // استقبال أوامر الريموت للتحكم في المشغل ومستوى الصوت
             String cmd = params.get("cmd");
             if (cmd == null) cmd = params.get("command");
 
@@ -114,7 +114,6 @@ public class ReceiverService extends Service {
                 return newFixedLengthResponse(Response.Status.OK, "text/plain", "CMD_OK: " + cmd);
             }
 
-            // أوامر من مسار الرابط المباشر مثل /play_pause أو /next
             if (uri != null && uri.length() > 1) {
                 String directCmd = uri.substring(1).toLowerCase();
                 if (isRemoteCommand(directCmd)) {
@@ -123,7 +122,7 @@ public class ReceiverService extends Service {
                 }
             }
 
-            // 2. طلبات الدمج (فيديو + صوت)
+            // طلبات الدمج (فيديو + صوت)
             String videoUrl = params.get("video");
             String audioUrl = params.get("audio");
             if (videoUrl != null && !videoUrl.trim().isEmpty()) {
@@ -138,14 +137,14 @@ public class ReceiverService extends Service {
                 return newFixedLengthResponse(Response.Status.OK, "text/plain", "OK: Merged Stream Received");
             }
 
-            // 3. طلبات إضافة لقائمة التشغيل (Queue / Playlist)
+            // طلبات إضافة لقائمة التشغيل (Queue)
             String queueUrl = params.get("queue");
             if (queueUrl != null && !queueUrl.trim().isEmpty()) {
                 sendQueueToPlayer(queueUrl.trim());
                 return newFixedLengthResponse(Response.Status.OK, "text/plain", "OK: Added To Queue");
             }
 
-            // 4. الرابط المباشر المفرد (فيديو أو صورة أو تيك توك أو يوتيوب)
+            // طلبات الرابط المباشر
             String rawUrl = params.get("url");
             if (rawUrl != null && !rawUrl.trim().isEmpty()) {
                 String targetUrl = rawUrl.trim();
@@ -174,7 +173,6 @@ public class ReceiverService extends Service {
     }
 
     private void handleRemoteCommand(String cmd) {
-        // التحكم في صوت الشاشة مباشرة
         if (cmd.equals("vol_up")) {
             if (audioManager != null) {
                 audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI);
@@ -196,7 +194,6 @@ public class ReceiverService extends Service {
             return;
         }
 
-        // إرسال أوامر التحكم في المشغل لـ MainActivity
         Intent cmdIntent = new Intent(this, MainActivity.class);
         cmdIntent.putExtra("command", cmd);
         cmdIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
