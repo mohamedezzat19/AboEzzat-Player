@@ -73,7 +73,7 @@
 
     </LinearLayout>
 
-    <!-- مشغل الفيديو: مخفي حتى وصول الرابط -->
+    <!-- مشغل الفيديو -->
     <androidx.media3.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
@@ -82,7 +82,7 @@
         app:use_controller="true"
         app:resize_mode="fit" />
 
-    <!-- عارض الصور: مخفي حتى وصول رابط صورة -->
+    <!-- عارض الصور الذكي -->
     <ImageView
         android:id="@+id/image_view"
         android:layout_width="match_parent"
