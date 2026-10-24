@@ -29,9 +29,10 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.load.engine.GlideException;
 import com.bumptech.glide.request.RequestListener;
 import com.bumptech.glide.request.target.Target;
-import java.math.BigInteger;
+import java.net.Inet4Address;
 import java.net.InetAddress;
-import java.nio.ByteOrder;
+import java.net.NetworkInterface;
+import java.util.Enumeration;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -60,31 +61,58 @@ public class MainActivity extends AppCompatActivity {
                 .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 .setAllowCrossProtocolRedirects(true);
 
-        Intent serviceIntent = new Intent(this, ReceiverService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent);
-        } else {
-            startService(serviceIntent);
-        }
-
+        startReceiverServiceSafely();
         displayIpAddress();
         handleIntent(getIntent());
     }
 
-    private void displayIpAddress() {
+    private void startReceiverServiceSafely() {
         try {
-            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-            int ipAddress = wm.getConnectionInfo().getIpAddress();
-            if (ByteOrder.nativeOrder().equals(ByteOrder.LITTLE_ENDIAN)) {
-                ipAddress = Integer.reverseBytes(ipAddress);
+            Intent serviceIntent = new Intent(this, ReceiverService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                try {
+                    startForegroundService(serviceIntent);
+                } catch (Exception e) {
+                    startService(serviceIntent);
+                }
+            } else {
+                startService(serviceIntent);
             }
-            byte[] ipByteArray = BigInteger.valueOf(ipAddress).toByteArray();
-            String ip = InetAddress.getByAddress(ipByteArray).getHostAddress();
-            tvIpAddress.setText("عنوان الاتصال: http://" + ip + ":" + PORT);
-            tvServerStatus.setText("حالة السيرفر: متصل في الخلفية ✓");
-        } catch (Exception e) {
-            tvIpAddress.setText("البورت: " + PORT);
-        }
+        } catch (Exception ignored) {}
+    }
+
+    private void displayIpAddress() {
+        new Thread(() -> {
+            String ip = getLocalIpAddress();
+            runOnUiThread(() -> {
+                if (ip != null && !ip.isEmpty()) {
+                    tvIpAddress.setText("عنوان الاتصال: http://" + ip + ":" + PORT);
+                    tvServerStatus.setText("حالة السيرفر: جاهز للتشغيل ✓");
+                } else {
+                    tvIpAddress.setText("البورت: " + PORT);
+                    tvServerStatus.setText("تأكد من الاتصال بالشبكة");
+                }
+            });
+        }).start();
+    }
+
+    private String getLocalIpAddress() {
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface iface = interfaces.nextElement();
+                if (iface.isLoopback() || !iface.isUp()) continue;
+
+                Enumeration<InetAddress> addresses = iface.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress addr = addresses.nextElement();
+                    if (!addr.isLoopbackAddress() && addr instanceof Inet4Address) {
+                        return addr.getHostAddress();
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     @Override
@@ -151,7 +179,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // دمج مسار الصوت ومسار الفيديو للتشغيل معاً
     private void playMergedMedia(String videoUrl, String audioUrl) {
         runOnUiThread(() -> {
             hideImageView();
