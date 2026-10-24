@@ -43,7 +43,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvServerStatus;
     private ExoPlayer player;
     private DefaultHttpDataSource.Factory httpDataSourceFactory;
-    private static final int PORT = 8080;
+    private static final int PORT = 1997;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
