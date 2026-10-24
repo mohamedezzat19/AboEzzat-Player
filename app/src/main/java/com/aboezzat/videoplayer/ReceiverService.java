@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.media.AudioManager;
 import android.os.Build;
 import android.os.IBinder;
@@ -26,7 +27,7 @@ public class ReceiverService extends Service {
 
     private static final String CHANNEL_ID = "AboEzzatReceiverChannel";
     private static final int NOTIFICATION_ID = 1001;
-    private static final int PORT = 8080;
+    private static final int DEFAULT_PORT = 8080;
     private BackgroundServer server;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private AudioManager audioManager;
@@ -36,8 +37,27 @@ public class ReceiverService extends Service {
         super.onCreate();
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         createNotificationChannel();
-        startForeground(NOTIFICATION_ID, buildNotification());
-        startServer();
+        
+        // تشغيل كخدمة أمامية بطريقة متوافقة ومحمية ضد كراش أندرويد الحديث
+        try {
+            Notification notification = buildNotification();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // توافق أندرويد 10 إلى أندرويد 15
+                int serviceType = 0;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK;
+                }
+                startForeground(NOTIFICATION_ID, notification, serviceType);
+            } else {
+                startForeground(NOTIFICATION_ID, notification);
+            }
+        } catch (Exception e) {
+            try {
+                startForeground(NOTIFICATION_ID, buildNotification());
+            } catch (Exception ignored) {}
+        }
+
+        startServerSafely();
     }
 
     private void createNotificationChannel() {
@@ -60,23 +80,34 @@ public class ReceiverService extends Service {
                 .setContentText("السيرفر نشط ومستعد للاستقبال والتحكم الفوري")
                 .setSmallIcon(R.drawable.app_icon)
                 .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build();
     }
 
-    private void startServer() {
-        if (server == null) {
-            server = new BackgroundServer(PORT);
-            try {
-                server.start();
-            } catch (Exception e) {
-                e.printStackTrace();
+    // تجربة بورت 8080 أولاً، وفي حال كان محجوزاً للبروكسي يتم الانتقال للبورت البديل
+    private void startServerSafely() {
+        if (server != null) return;
+
+        executor.execute(() -> {
+            int portToTry = DEFAULT_PORT;
+            boolean started = false;
+
+            for (int i = 0; i < 5; i++) {
+                try {
+                    server = new BackgroundServer(portToTry);
+                    server.start();
+                    started = true;
+                    break;
+                } catch (Exception e) {
+                    portToTry++;
+                }
             }
-        }
+        });
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        startServer();
+        startServerSafely();
         return START_STICKY;
     }
 
@@ -89,7 +120,9 @@ public class ReceiverService extends Service {
     public void onDestroy() {
         super.onDestroy();
         if (server != null) {
-            server.stop();
+            try {
+                server.stop();
+            } catch (Exception ignored) {}
             server = null;
         }
         executor.shutdown();
@@ -243,8 +276,7 @@ public class ReceiverService extends Service {
                         }
                     }
                 }
-            } catch (Exception ignored) {
-            }
+            } catch (Exception ignored) {}
         }
 
         return originalUrl;
