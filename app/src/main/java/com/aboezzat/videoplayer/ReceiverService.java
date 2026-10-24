@@ -27,7 +27,7 @@ public class ReceiverService extends Service {
 
     private static final String CHANNEL_ID = "AboEzzatReceiverChannel";
     private static final int NOTIFICATION_ID = 1001;
-    private static final int DEFAULT_PORT = 8080;
+    private static final int DEFAULT_PORT = 1997;
     private BackgroundServer server;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private AudioManager audioManager;
