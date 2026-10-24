@@ -3,131 +3,45 @@ package com.aboezzat.videoplayer;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.os.Build;
-import android.os.Handler;
 import android.os.IBinder;
-import android.os.Looper;
 import androidx.core.app.NotificationCompat;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.net.URLDecoder;
+import fi.iki.elonen.NanoHTTPD;
+import java.io.IOException;
+import java.util.Map;
 
 public class HttpServerService extends Service {
-    private static final int PORT = 8080;
-    private static final String CHANNEL_ID = "AboEzzatPlayerChannel";
-    private ServerSocket serverSocket;
-    private boolean isRunning = false;
+    private static final int PORT = 1997;
+    private WebServer server;
 
     @Override
     public void onCreate() {
         super.onCreate();
-        createNotificationChannel();
-        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("AboEzzat Player")
-                .setContentText("الخادم جاهز لاستقبال الفيديوهات على منفذ " + PORT)
-                .setSmallIcon(android.R.drawable.ic_media_play)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .build();
-        startForeground(1, notification);
-        startServer();
-    }
-
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID,
-                    "AboEzzat Server",
-                    NotificationManager.IMPORTANCE_HIGH
-            );
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            if (manager != null) {
-                manager.createNotificationChannel(channel);
-            }
+        startForegroundService();
+        try {
+            server = new WebServer(PORT);
+            server.start();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
-    private void startServer() {
-        isRunning = true;
-        new Thread(() -> {
-            try {
-                serverSocket = new ServerSocket(PORT);
-                while (isRunning) {
-                    Socket clientSocket = serverSocket.accept();
-                    handleClient(clientSocket);
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }).start();
-    }
-
-    private void handleClient(Socket socket) {
-        new Thread(() -> {
-            try {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                String line = reader.readLine();
-                String videoUrl = null;
-
-                if (line != null) {
-                    String[] parts = line.split(" ");
-                    if (parts.length > 1) {
-                        String fullPath = parts[1];
-                        if (fullPath.contains("url=")) {
-                            String raw = fullPath.substring(fullPath.indexOf("url=") + 4);
-                            if (raw.contains("&")) {
-                                raw = raw.substring(0, raw.indexOf("&"));
-                            }
-                            videoUrl = URLDecoder.decode(raw, "UTF-8");
-                        } else if (fullPath.contains("http://") || fullPath.contains("https://")) {
-                            int httpIndex = fullPath.indexOf("http://");
-                            if (httpIndex == -1) httpIndex = fullPath.indexOf("https://");
-                            videoUrl = URLDecoder.decode(fullPath.substring(httpIndex), "UTF-8");
-                        }
-                    }
-                }
-
-                String responseBody = "OK";
-                String httpResponse = "HTTP/1.1 200 OK\r\n" +
-                        "Content-Type: text/plain; charset=UTF-8\r\n" +
-                        "Content-Length: " + responseBody.getBytes("UTF-8").length + "\r\n" +
-                        "Access-Control-Allow-Origin: *\r\n" +
-                        "Connection: close\r\n\r\n" +
-                        responseBody;
-
-                OutputStream out = socket.getOutputStream();
-                out.write(httpResponse.getBytes("UTF-8"));
-                out.flush();
-                socket.close();
-
-                if (videoUrl != null && !videoUrl.trim().isEmpty()) {
-                    final String finalUrl = videoUrl.trim();
-                    new Handler(Looper.getMainLooper()).post(() -> {
-                        try {
-                            Intent launchIntent = new Intent(HttpServerService.this, MainActivity.class);
-                            launchIntent.putExtra("video_url", finalUrl);
-                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | 
-                                                  Intent.FLAG_ACTIVITY_CLEAR_TOP | 
-                                                  Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                            startActivity(launchIntent);
-                        } catch (Exception ignored) {}
-
-                        Intent broadcastIntent = new Intent("com.aboezzat.videoplayer.PLAY_VIDEO");
-                        broadcastIntent.setPackage(getPackageName());
-                        broadcastIntent.putExtra("video_url", finalUrl);
-                        sendBroadcast(broadcastIntent);
-                    });
-                }
-
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }).start();
+    private void startForegroundService() {
+        String channelId = "AboEzzatPlayerHttp";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                channelId, "AboEzzat Player Service", NotificationManager.IMPORTANCE_LOW);
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) manager.createNotificationChannel(channel);
+        }
+        Notification notification = new NotificationCompat.Builder(this, channelId)
+            .setContentTitle("AboEzzat Player")
+            .setContentText("السيرفر يعمل لاستقبال الوسائط")
+            .setSmallIcon(R.drawable.app_icon)
+            .build();
+        startForeground(1, notification);
     }
 
     @Override
@@ -137,17 +51,45 @@ public class HttpServerService extends Service {
 
     @Override
     public void onDestroy() {
-        super.onDestroy();
-        isRunning = false;
-        if (serverSocket != null) {
-            try {
-                serverSocket.close();
-            } catch (Exception ignored) {}
+        if (server != null) {
+            server.stop();
         }
+        super.onDestroy();
     }
 
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    private class WebServer extends NanoHTTPD {
+        public WebServer(int port) {
+            super(port);
+        }
+
+        @Override
+        public Response serve(IHTTPSession session) {
+            Map<String, String> parms = session.getParms();
+            String uri = session.getUri();
+
+            if ("/play".equals(uri)) {
+                String videoUrl = parms.get("url");
+                if (videoUrl != null && !videoUrl.isEmpty()) {
+                    Intent intent = new Intent("com.aboezzat.videoplayer.PLAY_VIDEO");
+                    intent.putExtra("video_url", videoUrl);
+                    sendBroadcast(intent);
+                    return newFixedLengthResponse(Response.Status.OK, "text/plain", "OK");
+                }
+            } else if ("/control".equals(uri)) {
+                String action = parms.get("action");
+                if (action != null) {
+                    Intent intent = new Intent("com.aboezzat.videoplayer.REMOTE_ACTION");
+                    intent.putExtra("action", action);
+                    sendBroadcast(intent);
+                    return newFixedLengthResponse(Response.Status.OK, "text/plain", "OK");
+                }
+            }
+            return newFixedLengthResponse(Response.Status.OK, "text/plain", "AboEzzat Player Server Running");
+        }
     }
 }
