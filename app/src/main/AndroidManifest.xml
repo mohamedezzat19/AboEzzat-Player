@@ -6,8 +6,17 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- دعم شاشات التلفزيون وشاشات اللمس معاً بدون إجبار عتاد معين -->
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
 
     <queries>
         <package android:name="com.teamsmart.videomanager.tv" />
@@ -37,12 +46,12 @@
             </intent-filter>
         </activity>
 
-        <!-- خدمة الاستقبال الخلفية الدائمة -->
+        <!-- خدمة الاستقبال الخلفية المتوافقة مع أندرويد الحديث والفاير ستيك -->
         <service
             android:name=".ReceiverService"
             android:enabled="true"
-            android:exported="true"
-            android:foregroundServiceType="specialUse" />
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- مستقبل بدء التشغيل مع إقلاع الشاشة -->
         <receiver
