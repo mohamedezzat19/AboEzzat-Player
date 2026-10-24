@@ -21,7 +21,7 @@
         android:orientation="vertical"
         android:gravity="center"
         android:background="#1A1A2E"
-        android:padding="32dp">
+        android:padding="20dp">
 
         <TextView
             android:id="@+id/welcomeTitle"
@@ -29,15 +29,15 @@
             android:layout_height="wrap_content"
             android:text="أهلاً بك يا أبو عزت"
             android:textColor="#FFD700"
-            android:textSize="48sp"
+            android:textSize="36sp"
             android:textStyle="bold"
-            android:layout_marginBottom="24dp" />
+            android:layout_marginBottom="16dp" />
 
         <ImageView
             android:id="@+id/profileImage"
-            android:layout_width="160dp"
-            android:layout_height="160dp"
-            android:layout_marginBottom="24dp"
+            android:layout_width="260dp"
+            android:layout_height="260dp"
+            android:layout_marginBottom="16dp"
             android:scaleType="centerCrop"
             android:src="@drawable/app_icon" />
 
@@ -47,15 +47,15 @@
             android:layout_height="wrap_content"
             android:text="سُبْحَانَ اللَّهِ وَبِحَمْدِهِ ، سُبْحَانَ اللَّهِ الْعَظِيمِ"
             android:textColor="#E0E0E0"
-            android:textSize="32sp"
-            android:layout_marginBottom="32dp" />
+            android:textSize="22sp"
+            android:layout_marginBottom="24dp" />
 
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="#2A2A4A"
-            android:padding="24dp"
+            android:padding="16dp"
             android:gravity="center">
 
             <TextView
@@ -64,8 +64,8 @@
                 android:layout_height="wrap_content"
                 android:text="حالة السيرفر: جاهز للتشغيل ✓"
                 android:textColor="#4CAF50"
-                android:textSize="28sp"
-                android:layout_marginBottom="12dp" />
+                android:textSize="20sp"
+                android:layout_marginBottom="8dp" />
 
             <TextView
                 android:id="@+id/ipText"
@@ -73,7 +73,7 @@
                 android:layout_height="wrap_content"
                 android:text="جاري فحص الشبكة..."
                 android:textColor="#00D4FF"
-                android:textSize="26sp"
+                android:textSize="20sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
