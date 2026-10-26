@@ -2,6 +2,7 @@ package com.aboezzat.videoplayer;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.media.AudioManager;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -38,6 +39,7 @@ public class MainActivity extends AppCompatActivity {
     private ImageView ivMemorial;
     private WebServer server;
     private SharedPreferences prefs;
+    private AudioManager audioManager;
 
     private static final int HTTP_PORT = 8081;
     private static final int UDP_PORT = 8888;
@@ -63,6 +65,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         prefs = getSharedPreferences("AboEzzatPlayerPrefs", MODE_PRIVATE);
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 
         playerView = findViewById(R.id.player_view);
         layoutIdle = findViewById(R.id.layout_idle);
@@ -162,7 +165,6 @@ public class MainActivity extends AppCompatActivity {
                 String deviceModel = Build.MODEL != null ? Build.MODEL : "AndroidTV";
                 while (isBroadcasting) {
                     String ip = getDeviceIp();
-                    // إرسال الهوية واسم الجهاز مع المنفذ
                     String beaconData = "ABOEZZAT_BEACON|" + deviceModel + "|" + ip + "|" + HTTP_PORT;
                     byte[] buffer = beaconData.getBytes();
 
@@ -238,13 +240,19 @@ public class MainActivity extends AppCompatActivity {
                     player.seekTo(Math.max(0, player.getCurrentPosition() - 10000));
                     break;
                 case "vol_up":
-                    player.setDeviceVolume(player.getDeviceVolume() + 1);
+                    if (audioManager != null) {
+                        audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI);
+                    }
                     break;
                 case "vol_down":
-                    player.setDeviceVolume(Math.max(0, player.getDeviceVolume() - 1));
+                    if (audioManager != null) {
+                        audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI);
+                    }
                     break;
                 case "mute":
-                    player.setDeviceMuted(!player.isDeviceMuted());
+                    if (audioManager != null) {
+                        audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, AudioManager.FLAG_SHOW_UI);
+                    }
                     break;
                 case "stop":
                     showIdleView();
