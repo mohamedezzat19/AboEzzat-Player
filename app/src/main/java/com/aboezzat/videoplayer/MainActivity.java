@@ -2,8 +2,12 @@ package com.aboezzat.videoplayer;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.media.AudioManager;
+import android.net.Uri;
 import android.net.wifi.WifiManager;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -18,13 +22,21 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
+import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.exoplayer.source.MergingMediaSource;
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
+import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.PlayerView;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.HttpURLConnection;
 import java.net.InetAddress;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -36,7 +48,7 @@ public class MainActivity extends AppCompatActivity {
     private ExoPlayer player;
     private LinearLayout layoutIdle;
     private TextView tvStatus, tvIp;
-    private ImageView ivMemorial;
+    private ImageView ivImageDisplay;
     private WebServer server;
     private SharedPreferences prefs;
     private AudioManager audioManager;
@@ -71,7 +83,7 @@ public class MainActivity extends AppCompatActivity {
         layoutIdle = findViewById(R.id.layout_idle);
         tvStatus = findViewById(R.id.tv_status);
         tvIp = findViewById(R.id.tv_ip);
-        ivMemorial = findViewById(R.id.iv_memorial);
+        ivImageDisplay = findViewById(R.id.iv_memorial);
 
         initPlayer();
         startServer();
@@ -82,6 +94,8 @@ public class MainActivity extends AppCompatActivity {
     private void initPlayer() {
         player = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(player);
+        // احترام أبعاد واتجاه الفيديو الأصلي وعدم تشويه الصورة
+        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
 
         player.addListener(new Player.Listener() {
             @Override
@@ -98,10 +112,23 @@ public class MainActivity extends AppCompatActivity {
         progressHandler.post(progressRunnable);
     }
 
-    private void playMedia(String url) {
+    private void playSingleMedia(String url) {
         runOnUiThread(() -> {
             currentPlayingUrl = url;
             layoutIdle.setVisibility(View.GONE);
+
+            // لو الرابط صورة يتم عرضها على ImageView مباشرة بكامل أناقتها
+            if (url.contains("media_image") || url.endsWith(".jpg") || url.endsWith(".png") || url.endsWith(".jpeg")) {
+                if (player != null) player.stop();
+                playerView.setVisibility(View.GONE);
+                if (ivImageDisplay != null) {
+                    ivImageDisplay.setVisibility(View.VISIBLE);
+                    loadImageAsync(url);
+                }
+                return;
+            }
+
+            if (ivImageDisplay != null) ivImageDisplay.setVisibility(View.GONE);
             playerView.setVisibility(View.VISIBLE);
 
             long savedPos = prefs.getLong("pos_" + url.hashCode(), 0);
@@ -119,6 +146,46 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    private void playMergedMedia(String videoUrl, String audioUrl) {
+        runOnUiThread(() -> {
+            currentPlayingUrl = videoUrl;
+            layoutIdle.setVisibility(View.GONE);
+            if (ivImageDisplay != null) ivImageDisplay.setVisibility(View.GONE);
+            playerView.setVisibility(View.VISIBLE);
+
+            DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(this);
+            MediaSource videoSource = new ProgressiveMediaSource.Factory(dataSourceFactory)
+                    .createMediaSource(MediaItem.fromUri(videoUrl));
+            MediaSource audioSource = new ProgressiveMediaSource.Factory(dataSourceFactory)
+                    .createMediaSource(MediaItem.fromUri(audioUrl));
+
+            MergingMediaSource mergedSource = new MergingMediaSource(videoSource, audioSource);
+            player.setMediaSource(mergedSource);
+            player.prepare();
+            player.play();
+            Toast.makeText(MainActivity.this, "تم دمج مسار الصوت والفيديو بنجاح ✓", Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private void loadImageAsync(String imageUrl) {
+        AsyncTask.execute(() -> {
+            try {
+                URL url = new URL(imageUrl);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setDoInput(true);
+                conn.connect();
+                InputStream input = conn.getInputStream();
+                Bitmap bitmap = BitmapFactory.decodeStream(input);
+                runOnUiThread(() -> {
+                    if (ivImageDisplay != null && bitmap != null) {
+                        ivImageDisplay.setImageBitmap(bitmap);
+                        ivImageDisplay.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                    }
+                });
+            } catch (Exception ignored) {}
+        });
+    }
+
     private void showIdleView() {
         runOnUiThread(() -> {
             if (player != null) {
@@ -126,6 +193,7 @@ public class MainActivity extends AppCompatActivity {
             }
             currentPlayingUrl = "";
             playerView.setVisibility(View.GONE);
+            if (ivImageDisplay != null) ivImageDisplay.setVisibility(View.GONE);
             layoutIdle.setVisibility(View.VISIBLE);
         });
     }
@@ -191,23 +259,21 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public Response serve(IHTTPSession session) {
-            Method method = session.getMethod();
-            String uri = session.getUri();
             Map<String, String> parms = session.getParms();
+            String uri = session.getUri();
 
             if ("/play".equals(uri) || "/".equals(uri)) {
-                String videoUrl = parms.get("url");
-                if (videoUrl == null && Method.POST.equals(method)) {
-                    Map<String, String> files = new HashMap<>();
-                    try {
-                        session.parseBody(files);
-                        parms = session.getParms();
-                        videoUrl = parms.get("url");
-                    } catch (Exception ignored) {}
+                String videoUrl = parms.get("video");
+                String audioUrl = parms.get("audio");
+
+                if (videoUrl != null && audioUrl != null) {
+                    playMergedMedia(videoUrl, audioUrl);
+                    return newFixedLengthResponse(Response.Status.OK, "text/plain", "Merged Playing");
                 }
 
-                if (videoUrl != null && !videoUrl.isEmpty()) {
-                    playMedia(videoUrl);
+                String singleUrl = parms.get("url");
+                if (singleUrl != null && !singleUrl.isEmpty()) {
+                    playSingleMedia(singleUrl);
                     return newFixedLengthResponse(Response.Status.OK, "text/plain", "Playing");
                 }
 
