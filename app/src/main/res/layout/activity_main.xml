@@ -5,8 +5,8 @@
     android:background="#1B1C26"
     android:keepScreenOn="true">
 
-    <!-- مشغل الفيديو في الخلفية -->
-    <com.google.android.exoplayer2.ui.StyledPlayerView
+    <!-- مشغل الفيديو المتوافق مع مكتبة Media3 الحديثة -->
+    <androidx.media3.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -32,7 +32,7 @@
             android:textSize="34sp"
             android:textStyle="bold" />
 
-        <!-- صورة ست الحبايب بالطول واضحة ومتناسقة بالاسم الصحيح -->
+        <!-- صورة ست الحبايب بالطول واضحة ومتناسقة -->
         <ImageView
             android:id="@+id/iv_memorial"
             android:layout_width="190dp"
