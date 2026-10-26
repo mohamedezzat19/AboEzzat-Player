@@ -13,6 +13,8 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.format.Formatter;
+import android.view.SurfaceView;
+import android.view.TextureView;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -22,6 +24,7 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
+import androidx.media3.common.VideoSize;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.MediaSource;
@@ -53,7 +56,8 @@ public class MainActivity extends AppCompatActivity {
     private SharedPreferences prefs;
     private AudioManager audioManager;
 
-    private static final int HTTP_PORT = 8081;
+    // المنفذ الذهبي الموحد
+    private static final int HTTP_PORT = 8080;
     private static final int UDP_PORT = 8888;
     private boolean isBroadcasting = true;
     private Thread beaconThread;
@@ -94,10 +98,28 @@ public class MainActivity extends AppCompatActivity {
     private void initPlayer() {
         player = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(player);
-        // احترام أبعاد واتجاه الفيديو الأصلي وعدم تشويه الصورة
         playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
 
+        // تعديل زاوية الدوران التلقائي لمنع اعوجاج الفيديو
         player.addListener(new Player.Listener() {
+            @Override
+            public void onVideoSizeChanged(VideoSize videoSize) {
+                runOnUiThread(() -> {
+                    View videoSurface = playerView.getVideoSurfaceView();
+                    if (videoSurface != null) {
+                        int rotation = videoSize.unappliedRotationDegrees;
+                        // لو الفيديو عمودي ومشقلب نعدل دورانه ومكانه فوراً
+                        if (rotation == 90 || rotation == 270) {
+                            videoSurface.setRotation(rotation);
+                        } else if (videoSize.height > videoSize.width && videoSurface.getRotation() != 0) {
+                            videoSurface.setRotation(0);
+                        } else {
+                            videoSurface.setRotation(0);
+                        }
+                    }
+                });
+            }
+
             @Override
             public void onPlaybackStateChanged(int playbackState) {
                 if (playbackState == Player.STATE_ENDED) {
@@ -117,8 +139,8 @@ public class MainActivity extends AppCompatActivity {
             currentPlayingUrl = url;
             layoutIdle.setVisibility(View.GONE);
 
-            // لو الرابط صورة يتم عرضها على ImageView مباشرة بكامل أناقتها
-            if (url.contains("media_image") || url.endsWith(".jpg") || url.endsWith(".png") || url.endsWith(".jpeg")) {
+            // لو الرابط صورة: عرضها فوراً على ImageView وإيقاف مشغل الفيديو
+            if (url.contains("media_image") || url.contains(".jpg") || url.contains(".png") || url.contains(".jpeg")) {
                 if (player != null) player.stop();
                 playerView.setVisibility(View.GONE);
                 if (ivImageDisplay != null) {
@@ -172,6 +194,8 @@ public class MainActivity extends AppCompatActivity {
             try {
                 URL url = new URL(imageUrl);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
                 conn.setDoInput(true);
                 conn.connect();
                 InputStream input = conn.getInputStream();
@@ -202,7 +226,7 @@ public class MainActivity extends AppCompatActivity {
         server = new WebServer(HTTP_PORT);
         try {
             server.start();
-            tvStatus.setText("حالة السيرفر: جاهز للتشغيل ✓");
+            tvStatus.setText("حالة السيرفر: جاهز للتشغيل ✓ (منفذ 8080)");
         } catch (IOException e) {
             tvStatus.setText("خطأ في بدء السيرفر: " + e.getMessage());
         }
