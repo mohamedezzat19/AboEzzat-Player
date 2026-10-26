@@ -32,7 +32,7 @@
             android:textSize="34sp"
             android:textStyle="bold" />
 
-        <!-- صورة ست الحبايب بالطول واضحة ومتناسقة -->
+        <!-- صورة ست الحبايب بالطول واضحة ومتناسقة بالاسم الصحيح -->
         <ImageView
             android:id="@+id/iv_memorial"
             android:layout_width="190dp"
@@ -40,7 +40,7 @@
             android:layout_marginBottom="20dp"
             android:adjustViewBounds="true"
             android:scaleType="fitCenter"
-            android:src="@drawable/grandma" />
+            android:src="@drawable/app_icon" />
 
         <!-- الذكر الطيب -->
         <TextView
