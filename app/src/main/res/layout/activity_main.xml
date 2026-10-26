@@ -18,7 +18,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:gravity="center"
-        android:orientation="VERTICAL"
+        android:orientation="vertical"
         android:padding="24dp">
 
         <!-- الترحيب بأبو عزت -->
@@ -60,7 +60,7 @@
             android:background="#333842"
             android:gravity="center"
             android:minWidth="440dp"
-            android:orientation="VERTICAL"
+            android:orientation="vertical"
             android:paddingHorizontal="24dp"
             android:paddingVertical="14dp">
 
